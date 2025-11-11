@@ -4,6 +4,7 @@ import fitz  # PyMuPDF
 from pptx import Presentation
 import pandas as pd
 import io
+import google.generativeai as genai
 
 # --- Configuración de la Página ---
 st.set_page_config(
@@ -123,6 +124,11 @@ with st.sidebar:
     # Placeholder para icono "doodle"
     st.image("https://placehold.co/250x150/F5A6C1/FFFFFF?text=Icono+Médico+Doodle", use_column_width=True)
     st.markdown(f"<p style='color:var(--gris-oscuro); text-align: center;'>¡Hola Dr. David!</p>", unsafe_allow_html=True)
+    
+    st.markdown("---")
+    # Campo para la API Key de Gemini
+    api_key = st.text_input("Google AI API Key", type="password", help="Obtén tu API Key de Google AI Studio.")
+    st.session_state.api_key = api_key
 
 
 # --- CUERPO PRINCIPAL DE LA APP ---
@@ -171,32 +177,55 @@ elif st.session_state.page == "Verificación IA":
 
     if not st.session_state.extracted_content:
         st.warning("Por favor, carga un archivo primero en la sección 'Cargar Contenido'.")
+    elif not st.session_state.api_key:
+        st.warning("Por favor, introduce tu Google AI API Key en la barra lateral para continuar.")
     else:
         st.text_area("Contenido a Verificar", value=st.session_state.extracted_content, height=250, disabled=True)
         
         if st.button("🔬 Analizar Precisión"):
-            # --- PLACEHOLDER: Llamada a OpenAI API (GPT-4/5) ---
-            # Aquí se enviaría el texto a la API con un prompt de verificación médica.
+            # --- CONEXIÓN REAL A GEMINI API ---
+            try:
+                genai.configure(api_key=st.session_state.api_key)
+                
+                # Configuración del modelo
+                generation_config = {
+                    "temperature": 0.7,
+                    "top_p": 1,
+                    "top_k": 1,
+                    "max_output_tokens": 2048,
+                }
+                model = genai.GenerativeModel(model_name="gemini-2.5-flash-preview-09-2025",
+                                              generation_config=generation_config)
+                
+                # Creación del Prompt (Instrucción)
+                prompt_parts = [
+                    "Rol: Eres un experto en educación médica y un revisor científico riguroso.",
+                    "Contexto: El siguiente texto fue extraído del material de estudio de un estudiante de medicina.",
+                    f"Texto a Analizar:\n---\n{st.session_state.extracted_content}\n---\n",
+                    "Tu Tarea: Analiza el texto. Para cada concepto clave o afirmación principal, evalúa su precisión científica y claridad.",
+                    "Formato de Respuesta: Responde en viñetas (Markdown). Marca cada punto como:",
+                    "🟢 Correcto: [Concepto] - [Breve análisis de por qué es correcto].",
+                    "🟡 Parcialmente Correcto: [Concepto] - [Aclaración necesaria].",
+                    "🔴 Incorrecto: [Concepto] - [Corrección clara y concisa].",
+                    "Para puntos 🟡 y 🔴, provee una breve sugerencia o corrección con referencia a fuentes médicas estándar (ej. Harrison, ILAE, etc.)."
+                ]
+
+                with st.spinner("🧠 La IA está analizando la precisión..."):
+                    # Generar contenido
+                    response = model.generate_content(prompt_parts)
+                    
+                    st.subheader("Resultados del Análisis de Gemini:")
+                    st.markdown(response.text)
+
+            except Exception as e:
+                st.error(f"Error al contactar la API de Gemini: {e}")
+                st.error("Asegúrate de que la API Key sea correcta y tenga permisos.")
             
-            # Simulación de respuesta de la IA
-            st.subheader("Resultados del Análisis:")
-            
-            st.markdown("""
-            <div class.verif-correcto">
-                <p><strong>🟢 Correcto:</strong> "El lóbulo frontal es clave para las funciones ejecutivas."</p>
-                <small>Análisis: Esta afirmación es precisa y bien definida.</small>
-            </div>
-            <br>
-            <div class="verif-parcial">
-                <p><strong>🟡 Parcialmente Correcto:</strong> "La epilepsia siempre causa convulsiones."</p>
-                <small>Sugerencia IA: Requiere aclaración. "Epilepsia" es un trastorno de predisposición a crisis. No todas las crisis son convulsivas (ej. ausencias). Fuente: ILAE 2017.</small>
-            </div>
-            <br>
-            <div class="verif-incorrecto">
-                <p><strong>🔴 Incorrecto:</strong> "La bioquímica estudia solo las plantas."</p>
-                <small>Corrección IA: Esto es incorrecto. La bioquímica estudia los procesos químicos en todos los seres vivos. Fuente: Lehninger Principles of Biochemistry.</small>
-            </div>
-            """, unsafe_allow_html=True)
+            # --- El contenido simulado de abajo ya no se usa ---
+            # st.markdown("""
+            # <div class="verif-correcto">...</div>
+            # ...
+            # """, unsafe_allow_html=True)
 
 # 3. Generador de Preguntas
 elif st.session_state.page == "Generar Examen":
@@ -214,7 +243,7 @@ elif st.session_state.page == "Generar Examen":
         
         if st.button("🚀 Generar Flashcards"):
             # --- PLACEHOLDER: Llamada a OpenAI API ---
-            # Aquí la IA generaría preguntas basadas en st.session_state.extracted_content
+            # (Este es el siguiente paso: implementar Gemini aquí)
             
             st.subheader("Tu Examen (Flashcard 1 de 5):")
             
@@ -273,4 +302,5 @@ elif st.session_state.page == "Mi Progreso":
     st.markdown("---")
     st.subheader("Frase Motivacional:")
     st.info("Recuerda, la medicina se aprende un caso a la vez. ¡Sigue estudiando!")
+
 
