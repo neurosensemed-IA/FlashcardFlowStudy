@@ -107,10 +107,17 @@ if 'page' not in st.session_state:
     st.session_state.page = "Cargar Contenido"
 if 'extracted_content' not in st.session_state:
     st.session_state.extracted_content = None
-if 'current_flashcard' not in st.session_state:
-    st.session_state.current_flashcard = None
+if 'current_exam' not in st.session_state: # Renombrado de 'current_flashcard'
+    st.session_state.current_exam = None
+if 'current_question_index' not in st.session_state:
+    st.session_state.current_question_index = 0
 if 'user_answer' not in st.session_state:
     st.session_state.user_answer = None
+if 'show_explanation' not in st.session_state:
+    st.session_state.show_explanation = False
+if 'exam_results' not in st.session_state:
+    st.session_state.exam_results = []
+
 
 # --- BARRA LATERAL (Navegación) ---
 with st.sidebar:
@@ -242,99 +249,160 @@ elif st.session_state.page == "Generar Examen":
     elif not st.session_state.api_key:
         st.warning("Por favor, introduce tu Google AI API Key en la barra lateral para continuar.")
     else:
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             st.session_state.difficulty = st.selectbox("Nivel de Dificultad:", ["Automático (Adaptativo)", "Fácil", "Medio", "Difícil"])
         with col2:
             st.session_state.subject = st.selectbox("Tipo de Materia:", ["Materias Básicas (Anatomía, Fisio...)", "Materias Clínicas (Neuro, Pediatría...)"])
+        with col3:
+            st.session_state.num_questions = st.number_input("Número de Preguntas:", min_value=1, max_value=10, value=5)
+
         
-        if st.button("🚀 Generar Nueva Flashcard"):
-            # Limpiar la respuesta y explicación anteriores
+        if st.button("🚀 Generar Examen"):
+            # Limpiar el examen anterior
+            st.session_state.current_exam = None
+            st.session_state.current_question_index = 0
             st.session_state.user_answer = None
-            st.session_state.current_flashcard = None
+            st.session_state.show_explanation = False
+            st.session_state.exam_results = []
             
-            # --- CONEXIÓN REAL A GEMINI API para PREGUNTAS ---
+            # --- CONEXIÓN REAL A GEMINI API para MÚLTIPLES PREGUNTAS ---
             try:
                 genai.configure(api_key=st.session_state.api_key)
                 model = genai.GenerativeModel(model_name="gemini-2.5-flash-preview-09-2025")
                 
-                # Prompt para generar la pregunta en formato JSON
+                # Prompt para generar MÚLTIPLES preguntas en formato JSON
                 prompt_parts = [
                     "Rol: Eres un profesor de medicina experto en crear preguntas de examen tipo USMLE/MIR.",
                     f"Contexto del Estudiante: Nivel {st.session_state.difficulty}, Materia {st.session_state.subject}.",
                     f"Texto base (Material de estudio):\n---\n{st.session_state.extracted_content}\n---\n",
-                    "Tu Tarea: Genera UNA (1) pregunta de opción múltiple (4 opciones) basada *únicamente* en el texto base.",
-                    "La pregunta debe ser clara, concisa y relevante al estilo de examen médico.",
-                    "Formato de Respuesta: Responde OBLIGATORIAMENTE en formato JSON. La estructura debe ser:",
+                    f"Tu Tarea: Genera {st.session_state.num_questions} preguntas de opción múltiple (4 opciones) basadas *únicamente* en el texto base.",
+                    "Las preguntas deben ser claras, concisas y relevantes al estilo de examen médico.",
+                    "Formato de Respuesta: Responde OBLIGATORIAMENTE en formato JSON. La estructura debe ser una LISTA de objetos:",
                     """
-                    {
-                      "pregunta": "El texto completo de la pregunta...",
-                      "opciones": {
-                        "A": "Texto de la opción A",
-                        "B": "Texto de la opción B",
-                        "C": "Texto de la opción C",
-                        "D": "Texto de la opción D"
+                    [
+                      {
+                        "pregunta": "El texto completo de la pregunta 1...",
+                        "opciones": {
+                          "A": "Texto de la opción A",
+                          "B": "Texto de la opción B",
+                          "C": "Texto de la opción C",
+                          "D": "Texto de la opción D"
+                        },
+                        "respuesta_correcta": "B",
+                        "explicacion": "Una breve pero completa explicación médica..."
                       },
-                      "respuesta_correcta": "B",
-                      "explicacion": "Una breve pero completa explicación médica de por qué la respuesta es correcta y las otras incorrectas, basada en el texto base."
-                    }
+                      {
+                        "pregunta": "El texto completo de la pregunta 2...",
+                        "opciones": { ... },
+                        "respuesta_correcta": "A",
+                        "explicacion": "..."
+                      }
+                    ]
                     """
                 ]
 
-                with st.spinner("🧠 Gemini está creando tu pregunta..."):
+                with st.spinner(f"🧠 Gemini está creando tu examen de {st.session_state.num_questions} preguntas..."):
                     response = model.generate_content(prompt_parts)
                     
                     # Limpiar la respuesta de Gemini (a veces añade '```json\n' al inicio y '```' al final)
                     clean_response = response.text.strip().replace('```json', '').replace('```', '')
                     
                     # Parsear el JSON
-                    pregunta_json = json.loads(clean_response)
-                    st.session_state.current_flashcard = pregunta_json
+                    preguntas_json_list = json.loads(clean_response)
+                    st.session_state.current_exam = preguntas_json_list
 
             except Exception as e:
-                st.error(f"Error al generar la pregunta con Gemini: {e}")
+                st.error(f"Error al generar el examen con Gemini: {e}")
                 st.error("Asegúrate de que la API Key sea correcta y el modelo JSON haya funcionado.")
                 st.error(f"Respuesta recibida (para depuración): {response.text if 'response' in locals() else 'No response'}")
 
-    # Mostrar la flashcard si existe en el estado de sesión
-    if st.session_state.current_flashcard:
-        card = st.session_state.current_flashcard
-        st.subheader("Tu Examen:")
+    # --- Lógica para mostrar el examen (pregunta por pregunta) ---
+    if st.session_state.current_exam:
         
-        st.markdown('<div class="flashcard">', unsafe_allow_html=True)
+        exam = st.session_state.current_exam
+        idx = st.session_state.current_question_index
         
-        # Contenido Dinámico de la Flashcard
-        st.markdown(f"<h5>Pregunta (Opción Múltiple)</h5>", unsafe_allow_html=True)
-        st.write(card["pregunta"])
-        
-        # Crear la lista de opciones para el radio
-        opciones = list(card["opciones"].values())
-        
-        st.radio("Selecciona tu respuesta:", 
-                 options=opciones,
-                 key="user_answer", # Guardamos la respuesta del usuario aquí
-                 index=None if not st.session_state.user_answer else opciones.index(st.session_state.user_answer)
-                 )
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        if st.button("Responder y ver explicación"):
-            if st.session_state.user_answer:
-                # Lógica de evaluación (real)
-                user_ans_text = st.session_state.user_answer
-                correct_ans_letter = card["respuesta_correcta"]
-                correct_ans_text = card["opciones"][correct_ans_letter]
-
-                if user_ans_text == correct_ans_text:
-                    st.success(f"¡Correcto! La respuesta es {correct_ans_letter}: {correct_ans_text}")
+        # Verificar si el examen ha terminado
+        if idx >= len(exam):
+            st.header("¡Examen Completado! 🥳")
+            
+            # Calcular puntaje
+            correctas = sum(1 for r in st.session_state.exam_results if r['correcta'])
+            total = len(exam)
+            puntaje = (correctas / total) * 100
+            
+            st.metric("Tu Puntaje:", f"{puntaje:.0f}%", f"{correctas} de {total} correctas")
+            
+            st.subheader("Resumen de tus respuestas:")
+            for i, result in enumerate(st.session_state.exam_results):
+                if result['correcta']:
+                    st.success(f"**Pregunta {i+1}:** Correcta. (Seleccionaste: {result['seleccionada']})")
                 else:
-                    st.error(f"Respuesta incorrecta. Seleccionaste: '{user_ans_text}'.")
-                    st.info(f"La respuesta correcta era {correct_ans_letter}: {correct_ans_text}")
-                
-                st.subheader("Explicación:")
-                st.info(card["explicacion"])
-            else:
-                st.warning("Por favor, selecciona una respuesta antes de continuar.")
+                    st.error(f"**Pregunta {i+1}:** Incorrecta. (Seleccionaste: {result['seleccionada']}, Correcta: {result['correcta_texto']})")
+            
+            if st.button("Volver a intentar"):
+                st.session_state.current_exam = None
+                st.rerun() # Recargar la página
+        
+        else:
+            # Mostrar la pregunta actual
+            card = exam[idx]
+            st.subheader(f"Tu Examen: Pregunta {idx + 1} de {len(exam)}")
+            
+            st.markdown('<div class="flashcard">', unsafe_allow_html=True)
+            st.markdown(f"<h5>{card['pregunta']}</h5>", unsafe_allow_html=True)
+            
+            opciones = list(card["opciones"].values())
+            
+            st.radio("Selecciona tu respuesta:", 
+                     options=opciones,
+                     key="user_answer",
+                     index=None,
+                     disabled=st.session_state.show_explanation # Deshabilitar opciones después de responder
+                     )
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Botón de Responder (solo si no se ha respondido)
+            if not st.session_state.show_explanation:
+                if st.button("Responder y ver explicación"):
+                    if st.session_state.user_answer:
+                        st.session_state.show_explanation = True
+                        
+                        # Lógica de evaluación
+                        user_ans_text = st.session_state.user_answer
+                        correct_ans_letter = card["respuesta_correcta"]
+                        correct_ans_text = card["opciones"][correct_ans_letter]
+                        
+                        es_correcta = (user_ans_text == correct_ans_text)
+                        
+                        # Guardar resultado
+                        st.session_state.exam_results.append({
+                            'correcta': es_correcta,
+                            'seleccionada': user_ans_text,
+                            'correcta_texto': correct_ans_text
+                        })
+                        
+                        if es_correcta:
+                            st.success(f"¡Correcto! La respuesta es {correct_ans_letter}: {correct_ans_text}")
+                        else:
+                            st.error(f"Respuesta incorrecta. Seleccionaste: '{user_ans_text}'.")
+                            st.info(f"La respuesta correcta era {correct_ans_letter}: {correct_ans_text}")
+                        
+                        st.subheader("Explicación:")
+                        st.info(card["explicacion"])
+                        st.rerun() # Volver a cargar para mostrar el botón "Siguiente"
+                    else:
+                        st.warning("Por favor, selecciona una respuesta antes de continuar.")
+            
+            # Botón de Siguiente Pregunta (solo si ya se respondió)
+            if st.session_state.show_explanation:
+                if st.button("Siguiente Pregunta ➡️"):
+                    st.session_state.current_question_index += 1
+                    st.session_state.user_answer = None
+                    st.session_state.show_explanation = False
+                    st.rerun() # Cargar la siguiente pregunta
 
 # 4. Progreso y Gamificación
 elif st.session_state.page == "Mi Progreso":
@@ -370,6 +438,7 @@ elif st.session_state.page == "Mi Progreso":
     st.markdown("---")
     st.subheader("Frase Motivacional:")
     st.info("Recuerda, la medicina se aprende un caso a la vez. ¡Sigue estudiando!")
+
 
 
 
