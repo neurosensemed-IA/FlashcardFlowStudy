@@ -100,6 +100,32 @@ st.markdown("""
         color: #000; /* Texto oscuro para mejor legibilidad en alertas */
     }
 
+    /* Contenedores de Feedback (más coloridos) */
+    .feedback-correct {
+        background-color: #2F2F2F;
+        border: 2px solid #28a745; /* Verde */
+        border-radius: 12px;
+        padding: 16px;
+        margin-top: 10px;
+        color: #F0F0F0;
+    }
+    .feedback-incorrect {
+        background-color: #2F2F2F;
+        border: 2px solid #dc3545; /* Rojo */
+        border-radius: 12px;
+        padding: 16px;
+        margin-top: 10px;
+        color: #F0F0F0;
+    }
+    .feedback-explanation {
+        background-color: #2F2F2F;
+        border: 2px solid #17a2b8; /* Azul info */
+        border-radius: 12px;
+        padding: 16px;
+        margin-top: 10px;
+        color: #F0F0F0;
+    }
+
     /* Contenedor de "Doodle" */
     .doodle-container {
         width: 100%;
@@ -145,6 +171,8 @@ if 'page' not in st.session_state:
     st.session_state.page = "Cargar Contenido"
 if 'api_key' not in st.session_state:
     st.session_state.api_key = ""
+if 'user_name' not in st.session_state:
+    st.session_state.user_name = ""
 if 'extracted_content' not in st.session_state:
     st.session_state.extracted_content = None
 if 'current_exam' not in st.session_state:
@@ -180,7 +208,11 @@ with st.sidebar:
     
     # Marcador de posición para el ícono
     st.markdown('<div class="doodle-container">Icono Médico Doodle</div>', unsafe_allow_html=True)
-    st.markdown("¡Hola Dr. David!")
+    
+    # Campo de nombre opcional
+    st.session_state.user_name = st.text_input("Tu Nombre (Opcional):", st.session_state.user_name)
+    if st.session_state.user_name:
+        st.markdown(f"¡Hola {st.session_state.user_name}!")
     
     st.markdown("---")
     
@@ -421,13 +453,27 @@ elif st.session_state.page == "Generar Examen":
             if st.session_state.show_explanation:
                 result = st.session_state.exam_results[idx]
                 if result['correcta']:
-                    st.success(f"¡Correcto! La respuesta es: {result['correcta_texto']}")
+                    st.markdown(f"""
+                    <div class="feedback-correct">
+                        ✅ <strong>¡Correcto!</strong> La respuesta es: {result['correcta_texto']}
+                    </div>
+                    """, unsafe_allow_html=True)
                 else:
-                    st.error(f"Respuesta incorrecta. Seleccionaste: '{result['seleccionada']}'.")
-                    st.info(f"La respuesta correcta era: {result['correcta_texto']}")
+                    st.markdown(f"""
+                    <div class="feedback-incorrect">
+                        ❌ <strong>Respuesta incorrecta.</strong> Seleccionaste: '{result['seleccionada']}'.
+                        <br>
+                        <strong>La respuesta correcta era:</strong> {result['correcta_texto']}
+                    </div>
+                    """, unsafe_allow_html=True)
                 
-                st.subheader("Explicación:")
-                st.info(card["explicacion"])
+                st.markdown(f"""
+                <div class="feedback-explanation">
+                    🧠 <strong>Explicación:</strong>
+                    <br>
+                    {card['explicacion']}
+                </div>
+                """, unsafe_allow_html=True)
                 
                 st.button("Siguiente Pregunta ➡️", on_click=go_to_next_question)
 
@@ -451,4 +497,5 @@ elif st.session_state.page == "Mi Progreso":
 
     st.subheader("Estadísticas de Desempeño")
     st.bar_chart({"Correctas": [20, 35, 30], "Incorrectas": [10, 5, 8]}, use_container_width=True)
+
 
