@@ -1,1 +1,6 @@
-streamlitPillowPyMuPDFpython-pptxpandasgoogle-generativeai
+streamlit
+Pillow
+PyMuPDF
+python-pptx
+pandas
+google-generativeai
