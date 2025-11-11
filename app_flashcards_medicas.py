@@ -1,6 +1,6 @@
 import streamlit as st
 from PIL import Image
-import PyMuPDF as fitz  # PyMuPDF
+import fitz  # PyMuPDF
 from pptx import Presentation
 import pandas as pd
 import io
@@ -273,3 +273,4 @@ elif st.session_state.page == "Mi Progreso":
     st.markdown("---")
     st.subheader("Frase Motivacional:")
     st.info("Recuerda, la medicina se aprende un caso a la vez. ¡Sigue estudiando!")
+
