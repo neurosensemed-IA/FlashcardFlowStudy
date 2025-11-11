@@ -273,4 +273,4 @@ elif st.session_state.page == "Mi Progreso":
     st.markdown("---")
     st.subheader("Frase Motivacional:")
     st.info("Recuerda, la medicina se aprende un caso a la vez. ¡Sigue estudiando!")
-
+    
