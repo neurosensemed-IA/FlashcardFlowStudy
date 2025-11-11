@@ -6,6 +6,7 @@ import pandas as pd
 import io
 import google.generativeai as genai
 import json
+import plotly.graph_objects as go # Importar Plotly
 
 # --- Configuración de la Página ---
 st.set_page_config(
@@ -126,7 +127,7 @@ st.markdown("""
         color: #F0F0F0;
     }
 
-    /* Contenedor de "Doodle" */
+    /* Contenedor de "Doodle" (Ahora con SVG) */
     .doodle-container {
         width: 100%;
         height: 150px;
@@ -135,9 +136,13 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: center;
-        color: var(--text-color);
-        font-weight: bold;
         margin-bottom: 20px;
+        padding: 10px;
+    }
+    .doodle-container svg {
+        max-width: 80%;
+        max-height: 80%;
+        fill: var(--text-color); /* Color de relleno para el SVG */
     }
 </style>
 """, unsafe_allow_html=True)
@@ -206,8 +211,18 @@ with st.sidebar:
     st.title("Med-Flash AI 🧬")
     st.markdown("Tu asistente de estudio médico con IA.")
     
-    # Marcador de posición para el ícono
-    st.markdown('<div class="doodle-container">Icono Médico Doodle</div>', unsafe_allow_html=True)
+    # SVG de Flashcard Médica (Corazón y Cerebro)
+    st.markdown(f"""
+    <div class="doodle-container">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 3H5C3.89543 3 3 3.89543 3 5V19C3 20.1046 3.89543 21 5 21H19C20.1046 21 21 20.1046 21 19V5C21 3.89543 20.1046 3 19 3ZM19 5V19H5V5H19Z"></path>
+            <path d="M17 7H7V17H17V7Z" fill="var(--primary-color)"></path>
+            <path d="M12 8C10.6667 8 9.33333 9.33333 8 10C9.33333 10.6667 10.6667 12 12 12C13.3333 12 14.6667 10.6667 16 10C14.6667 9.33333 13.3333 8 12 8Z" fill="var(--text-color)"></path>
+            <path d="M12 13C10.6667 13 9.33333 14.3333 8 15C9.33333 15.6667 10.6667 17 12 17C13.3333 17 14.6667 15.6667 16 15C14.6667 14.3333 13.3333 13 12 13Z" fill="var(--text-color)"></path>
+            <path d="M12 10.5C11.1716 10.5 10.5 11.1716 10.5 12C10.5 12.8284 11.1716 13.5 12 13.5C12.8284 13.5 13.5 12.8284 13.5 12C13.5 11.1716 12.8284 10.5 12 10.5Z" fill="var(--primary-color)"></path>
+        </svg>
+    </div>
+    """, unsafe_allow_html=True)
     
     # Campo de nombre opcional
     st.session_state.user_name = st.text_input("Tu Nombre (Opcional):", st.session_state.user_name)
@@ -394,16 +409,56 @@ elif st.session_state.page == "Generar Examen":
             
             correctas = sum(1 for r in st.session_state.exam_results if r['correcta'])
             total = len(exam)
-            puntaje = (correctas / total) * 100
             
+            if total > 0:
+                puntaje = (correctas / total) * 100
+            else:
+                puntaje = 0 # Evitar división por cero
+
             st.metric("Tu Puntaje:", f"{puntaje:.0f}%", f"{correctas} de {total} correctas")
             
-            st.subheader("Resumen de tus respuestas:")
+            # Gráfico de pastel (pie chart) para el resumen final
+            labels = ['Correctas', 'Incorrectas']
+            values = [correctas, total - correctas]
+            colors = ['#28a745', '#dc3545'] # Verde y Rojo
+
+            fig = go.Figure(data=[go.Pie(labels=labels, values=values, hole=.3, 
+                                        marker_colors=colors, 
+                                        hoverinfo="label+percent+value",
+                                        textinfo='percent',
+                                        pull=[0, 0.05] # Separar un poco las incorrectas
+                                        )])
+            fig.update_layout(title_text='Resumen de Respuestas', title_x=0.5,
+                              paper_bgcolor='rgba(0,0,0,0)',  # Fondo transparente
+                              plot_bgcolor='rgba(0,0,0,0)',
+                              font_color=var(--dark-text) # Color de texto
+                              )
+            st.plotly_chart(fig, use_container_width=True)
+
+            st.subheader("Revisión Detallada:")
             for i, result in enumerate(st.session_state.exam_results):
+                question_card = exam[i]
                 if result['correcta']:
-                    st.success(f"**Pregunta {i+1}:** Correcta. (Seleccionaste: {result['seleccionada']})")
+                    st.markdown(f"""
+                    <div class="feedback-correct">
+                        ✅ <strong>Pregunta {i+1} - ¡Correcto!</strong> (Seleccionaste: {result['seleccionada']})
+                    </div>
+                    """, unsafe_allow_html=True)
                 else:
-                    st.error(f"**Pregunta {i+1}:** Incorrecta. (Seleccionaste: {result['seleccionada']}, Correcta: {result['correcta_texto']})")
+                    st.markdown(f"""
+                    <div class="feedback-incorrect">
+                        ❌ <strong>Pregunta {i+1} - Incorrecto.</strong> (Seleccionaste: {result['seleccionada']})
+                        <br>
+                        <strong>La respuesta correcta era:</strong> {result['correcta_texto']}
+                    </div>
+                    """, unsafe_allow_html=True)
+                st.markdown(f"""
+                <div class="feedback-explanation">
+                    🧠 <strong>Explicación de la Pregunta {i+1}:</strong>
+                    <br>
+                    {question_card['explicacion']}
+                </div>
+                """, unsafe_allow_html=True)
             
             if st.button("Generar un Nuevo Examen", on_click=restart_exam):
                 st.rerun() 
@@ -422,7 +477,7 @@ elif st.session_state.page == "Generar Examen":
             st.radio(
                 "Selecciona tu respuesta:", 
                 options=opciones,
-                key="user_answer", # El estado se maneja aquí
+                key=f"user_answer_{idx}", # Clave única por pregunta
                 disabled=st.session_state.show_explanation
             )
             
@@ -431,7 +486,11 @@ elif st.session_state.page == "Generar Examen":
             # Botón de Responder (solo si no se ha respondido)
             if not st.session_state.show_explanation:
                 if st.button("Responder y ver explicación"):
-                    if st.session_state.user_answer:
+                    # Capturar la respuesta del radio button (usa la clave única)
+                    current_user_selection = st.session_state[f"user_answer_{idx}"]
+                    
+                    if current_user_selection: # Asegurarse de que el usuario haya seleccionado algo
+                        st.session_state.user_answer = current_user_selection # Actualizar el estado global con la selección actual
                         st.session_state.show_explanation = True
                         
                         user_ans_text = st.session_state.user_answer
@@ -497,5 +556,4 @@ elif st.session_state.page == "Mi Progreso":
 
     st.subheader("Estadísticas de Desempeño")
     st.bar_chart({"Correctas": [20, 35, 30], "Incorrectas": [10, 5, 8]}, use_container_width=True)
-
 
