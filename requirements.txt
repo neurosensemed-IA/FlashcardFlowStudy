@@ -4,3 +4,4 @@ PyMuPDF
 python-pptx
 pandas
 google-generativeai
+plotly
