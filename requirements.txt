@@ -1,5 +1,1 @@
-streamlit
-Pillow
-PyMuPDF
-python-pptx
-pandas
+streamlitPillowPyMuPDFpython-pptxpandasgoogle-generativeai
