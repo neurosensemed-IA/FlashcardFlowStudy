@@ -5,6 +5,7 @@ from pptx import Presentation
 import pandas as pd
 import io
 import google.generativeai as genai
+import json
 
 # --- Configuración de la Página ---
 st.set_page_config(
@@ -106,6 +107,10 @@ if 'page' not in st.session_state:
     st.session_state.page = "Cargar Contenido"
 if 'extracted_content' not in st.session_state:
     st.session_state.extracted_content = None
+if 'current_flashcard' not in st.session_state:
+    st.session_state.current_flashcard = None
+if 'user_answer' not in st.session_state:
+    st.session_state.user_answer = None
 
 # --- BARRA LATERAL (Navegación) ---
 with st.sidebar:
@@ -234,39 +239,102 @@ elif st.session_state.page == "Generar Examen":
 
     if not st.session_state.extracted_content:
         st.warning("Por favor, carga un archivo primero para generar preguntas sobre él.")
+    elif not st.session_state.api_key:
+        st.warning("Por favor, introduce tu Google AI API Key en la barra lateral para continuar.")
     else:
         col1, col2 = st.columns(2)
         with col1:
-            st.selectbox("Nivel de Dificultad:", ["Automático (Adaptativo)", "Fácil", "Medio", "Difícil"])
+            st.session_state.difficulty = st.selectbox("Nivel de Dificultad:", ["Automático (Adaptativo)", "Fácil", "Medio", "Difícil"])
         with col2:
-            st.selectbox("Tipo de Materia:", ["Materias Básicas (Anatomía, Fisio...)", "Materias Clínicas (Neuro, Pediatría...)"])
+            st.session_state.subject = st.selectbox("Tipo de Materia:", ["Materias Básicas (Anatomía, Fisio...)", "Materias Clínicas (Neuro, Pediatría...)"])
         
-        if st.button("🚀 Generar Flashcards"):
-            # --- PLACEHOLDER: Llamada a OpenAI API ---
-            # (Este es el siguiente paso: implementar Gemini aquí)
+        if st.button("🚀 Generar Nueva Flashcard"):
+            # Limpiar la respuesta y explicación anteriores
+            st.session_state.user_answer = None
+            st.session_state.current_flashcard = None
             
-            st.subheader("Tu Examen (Flashcard 1 de 5):")
-            
-            st.markdown('<div class="flashcard">', unsafe_allow_html=True)
-            
-            # Contenido de la Flashcard (Simulado)
-            st.markdown("<h5>Pregunta (Opción Múltiple)</h5>", unsafe_allow_html=True)
-            st.write("Paciente pediátrico de 6 años presenta episodios de mirada fija y desconexión de 10 segundos, sin caída, recuperándose inmediatamente. El EEG muestra complejo punta-onda generalizado a 3Hz. ¿Cuál es el diagnóstico más probable?")
-            
-            st.radio("Selecciona tu respuesta:", 
-                     ["A. Crisis focal compleja", 
-                      "B. Epilepsia de Ausencia Infantil (EAI)", 
-                      "C. Síncope vasovagal", 
-                      "D. Crisis tónico-clónica generalizada"], 
-                     index=None, key="q1")
-            
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            if st.button("Responder y ver explicación"):
-                # Lógica de evaluación (simulada)
-                st.success("¡Respuesta registrada!")
-                st.info("Explicación: La EAI se caracteriza por ausencias típicas en niños en edad escolar, con el patrón EEG descrito. [Incluiría mini-video o esquema].")
+            # --- CONEXIÓN REAL A GEMINI API para PREGUNTAS ---
+            try:
+                genai.configure(api_key=st.session_state.api_key)
+                model = genai.GenerativeModel(model_name="gemini-2.5-flash-preview-09-2025")
+                
+                # Prompt para generar la pregunta en formato JSON
+                prompt_parts = [
+                    "Rol: Eres un profesor de medicina experto en crear preguntas de examen tipo USMLE/MIR.",
+                    f"Contexto del Estudiante: Nivel {st.session_state.difficulty}, Materia {st.session_state.subject}.",
+                    f"Texto base (Material de estudio):\n---\n{st.session_state.extracted_content}\n---\n",
+                    "Tu Tarea: Genera UNA (1) pregunta de opción múltiple (4 opciones) basada *únicamente* en el texto base.",
+                    "La pregunta debe ser clara, concisa y relevante al estilo de examen médico.",
+                    "Formato de Respuesta: Responde OBLIGATORIAMENTE en formato JSON. La estructura debe ser:",
+                    """
+                    {
+                      "pregunta": "El texto completo de la pregunta...",
+                      "opciones": {
+                        "A": "Texto de la opción A",
+                        "B": "Texto de la opción B",
+                        "C": "Texto de la opción C",
+                        "D": "Texto de la opción D"
+                      },
+                      "respuesta_correcta": "B",
+                      "explicacion": "Una breve pero completa explicación médica de por qué la respuesta es correcta y las otras incorrectas, basada en el texto base."
+                    }
+                    """
+                ]
 
+                with st.spinner("🧠 Gemini está creando tu pregunta..."):
+                    response = model.generate_content(prompt_parts)
+                    
+                    # Limpiar la respuesta de Gemini (a veces añade '```json\n' al inicio y '```' al final)
+                    clean_response = response.text.strip().replace('```json', '').replace('```', '')
+                    
+                    # Parsear el JSON
+                    pregunta_json = json.loads(clean_response)
+                    st.session_state.current_flashcard = pregunta_json
+
+            except Exception as e:
+                st.error(f"Error al generar la pregunta con Gemini: {e}")
+                st.error("Asegúrate de que la API Key sea correcta y el modelo JSON haya funcionado.")
+                st.error(f"Respuesta recibida (para depuración): {response.text if 'response' in locals() else 'No response'}")
+
+    # Mostrar la flashcard si existe en el estado de sesión
+    if st.session_state.current_flashcard:
+        card = st.session_state.current_flashcard
+        st.subheader("Tu Examen:")
+        
+        st.markdown('<div class="flashcard">', unsafe_allow_html=True)
+        
+        # Contenido Dinámico de la Flashcard
+        st.markdown(f"<h5>Pregunta (Opción Múltiple)</h5>", unsafe_allow_html=True)
+        st.write(card["pregunta"])
+        
+        # Crear la lista de opciones para el radio
+        opciones = list(card["opciones"].values())
+        
+        st.radio("Selecciona tu respuesta:", 
+                 options=opciones,
+                 key="user_answer", # Guardamos la respuesta del usuario aquí
+                 index=None if not st.session_state.user_answer else opciones.index(st.session_state.user_answer)
+                 )
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        if st.button("Responder y ver explicación"):
+            if st.session_state.user_answer:
+                # Lógica de evaluación (real)
+                user_ans_text = st.session_state.user_answer
+                correct_ans_letter = card["respuesta_correcta"]
+                correct_ans_text = card["opciones"][correct_ans_letter]
+
+                if user_ans_text == correct_ans_text:
+                    st.success(f"¡Correcto! La respuesta es {correct_ans_letter}: {correct_ans_text}")
+                else:
+                    st.error(f"Respuesta incorrecta. Seleccionaste: '{user_ans_text}'.")
+                    st.info(f"La respuesta correcta era {correct_ans_letter}: {correct_ans_text}")
+                
+                st.subheader("Explicación:")
+                st.info(card["explicacion"])
+            else:
+                st.warning("Por favor, selecciona una respuesta antes de continuar.")
 
 # 4. Progreso y Gamificación
 elif st.session_state.page == "Mi Progreso":
@@ -302,5 +370,6 @@ elif st.session_state.page == "Mi Progreso":
     st.markdown("---")
     st.subheader("Frase Motivacional:")
     st.info("Recuerda, la medicina se aprende un caso a la vez. ¡Sigue estudiando!")
+
 
 
