@@ -180,6 +180,8 @@ if 'user_name' not in st.session_state:
     st.session_state.user_name = ""
 if 'extracted_content' not in st.session_state:
     st.session_state.extracted_content = None
+if 'flashcard_library' not in st.session_state:
+    st.session_state.flashcard_library = {} # Biblioteca para guardar mazos
 if 'current_exam' not in st.session_state:
     st.session_state.current_exam = None
 if 'current_question_index' not in st.session_state:
@@ -238,7 +240,7 @@ with st.sidebar:
         st.session_state.page = "Verificación IA"
     if st.button("3. Generar Examen", use_container_width=True):
         st.session_state.page = "Generar Examen"
-    if st.button("4. Mi Progreso", use_container_width=True):
+    if st.button("4. Estudiar y Progreso", use_container_width=True):
         st.session_state.page = "Mi Progreso"
         
     st.markdown("---")
@@ -328,16 +330,21 @@ elif st.session_state.page == "Verificación IA":
                 st.error(f"Error al conectar con Gemini: {e}")
                 st.error("Asegúrate de que la API Key sea correcta.")
 
-# 3. Generador de Preguntas
+# 3. Generador de Preguntas (Página de CREACIÓN)
 elif st.session_state.page == "Generar Examen":
-    st.header("3. Generar Examen Tipo USMLE/MIR 🎓")
-    st.markdown("Generamos preguntas basadas en tu material de estudio.")
+    st.header("3. Generar Mazo de Flashcards 🎓")
+    st.markdown("Crea un nuevo mazo de tarjetas de estudio basado en tu material.")
 
     if not st.session_state.extracted_content:
         st.warning("Por favor, carga un archivo primero para generar preguntas sobre él.")
     elif not st.session_state.api_key:
         st.warning("Por favor, introduce tu Google AI API Key en la barra lateral para continuar.")
     else:
+        # Nuevo campo para el nombre del mazo
+        deck_name = st.text_input("Nombre del Tema (ej. Fisiología Cardíaca - Ciclo):")
+        
+        st.markdown("---")
+        
         col1, col2, col3 = st.columns(3)
         with col1:
             st.session_state.difficulty = st.selectbox("Nivel de Dificultad:", ["Automático (Adaptativo)", "Fácil", "Medio", "Difícil"])
@@ -347,17 +354,17 @@ elif st.session_state.page == "Generar Examen":
             st.session_state.num_questions = st.number_input("Número de Preguntas:", min_value=1, max_value=10, value=5)
 
         
-        if st.button("🚀 Generar Examen"):
-            # Limpiar el examen anterior
-            restart_exam()
-            
-            # --- CONEXIÓN REAL A GEMINI API para MÚLTIPLES PREGUNTAS ---
-            try:
-                genai.configure(api_key=st.session_state.api_key)
-                model = genai.GenerativeModel(model_name="gemini-2.5-flash-preview-09-2025")
+        if st.button("🚀 Generar y Guardar Mazo"):
+            # Validaciones
+            if not deck_name:
+                st.warning("Por favor, dale un nombre a tu mazo de tarjetas.")
+            elif deck_name in st.session_state.flashcard_library:
+                st.error(f"Ya existe un mazo con el nombre '{deck_name}'. Por favor, elige otro nombre.")
+            else:
+                # Limpiar el examen anterior
+                restart_exam()
                 
-                prompt_parts = [
-                    "Rol: Eres un profesor de medicina experto en crear preguntas de examen tipo USMLE/MIR.",
+                # --- CONEXIÓN REAL A GEMINI API para MÚLTIPLES PREGUNTAS ---
                     f"Contexto del Estudiante: Nivel {st.session_state.difficulty}, Materia {st.session_state.subject}.",
                     f"Texto base (Material de estudio):\n---\n{st.session_state.extracted_content}\n---\n",
                     f"Tu Tarea: Genera {st.session_state.num_questions} preguntas de opción múltiple (4 opciones) basadas *únicamente* en el texto base.",
@@ -390,12 +397,24 @@ elif st.session_state.page == "Generar Examen":
                     response = model.generate_content(prompt_parts)
                     clean_response = response.text.strip().replace('```json', '').replace('```', '')
                     preguntas_json_list = json.loads(clean_response)
-                    st.session_state.current_exam = preguntas_json_list
+                    
+                    # Guardar en la biblioteca en lugar de iniciar el examen
+                    st.session_state.flashcard_library[deck_name] = preguntas_json_list
+                    st.success(f"¡Mazo '{deck_name}' con {len(preguntas_json_list)} tarjetas guardado con éxito!")
+                    st.balloons()
 
-            except Exception as e:
-                st.error(f"Error al generar el examen con Gemini: {e}")
-                st.error("Asegúrate de que la API Key sea correcta y el modelo JSON haya funcionado.")
-                st.error(f"Respuesta recibida (para depuración): {response.text if 'response' in locals() else 'No response'}")
+                except Exception as e:
+                    st.error(f"Error al generar el examen con Gemini: {e}")
+                    st.error("Asegúrate de que la API Key sea correcta y el modelo JSON haya funcionado.")
+                    st.error(f"Respuesta recibida (para depuración): {response.text if 'response' in locals() else 'No response'}")
+
+# --- PÁGINA DE ESTUDIO (NUEVA) ---
+elif st.session_state.page == "Estudiar":
+    
+    if st.button("⬅️ Volver a mis mazos"):
+        st.session_state.page = "Mi Progreso"
+        restart_exam() # Limpia el estado del examen actual
+        st.rerun()
 
     # --- Lógica para mostrar el examen (pregunta por pregunta) ---
     if st.session_state.current_exam:
@@ -459,9 +478,9 @@ elif st.session_state.page == "Generar Examen":
                     {question_card['explicacion']}
                 </div>
                 """, unsafe_allow_html=True)
-            
-            if st.button("Generar un Nuevo Examen", on_click=restart_exam):
-                st.rerun() 
+                if st.button("Volver a mis mazos", on_click=restart_exam):
+                    st.session_state.page = "Mi Progreso"
+                    st.rerun() 
         
         else:
             # Mostrar la pregunta actual
@@ -538,7 +557,34 @@ elif st.session_state.page == "Generar Examen":
 
 # 4. Progreso y Gamificación
 elif st.session_state.page == "Mi Progreso":
-    st.header("4. Mi Progreso y Gamificación 🏆")
+    st.header("4. Estudiar y Progreso 🏆")
+    
+    st.subheader("Mis Mazos de Estudio 📚")
+    
+    # Lógica para seleccionar y empezar a estudiar un mazo
+    if not st.session_state.flashcard_library:
+        st.info("Aún no has generado ningún mazo. Ve a 'Generar Examen' para crear uno.")
+    else:
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            deck_names = list(st.session_state.flashcard_library.keys())
+            selected_deck_name = st.selectbox("Selecciona un mazo para estudiar:", options=deck_names)
+        
+        with col2:
+            # Botón para iniciar el estudio
+            if st.button("Iniciar Estudio 🚀", use_container_width=True, type="primary"):
+                restart_exam() # Limpia el estado del examen anterior
+                st.session_state.current_exam = st.session_state.flashcard_library[selected_deck_name]
+                st.session_state.page = "Estudiar"
+                st.rerun()
+
+            # Botón para eliminar un mazo
+            if st.button("🗑️ Eliminar Mazo", use_container_width=True):
+                del st.session_state.flashcard_library[selected_deck_name]
+                st.rerun()
+
+    st.markdown("---") # Separador
+    
     st.markdown("¡Sigue tu avance y colecciona insignias!")
     
     st.subheader("Niveles de Conocimiento")
@@ -556,4 +602,5 @@ elif st.session_state.page == "Mi Progreso":
 
     st.subheader("Estadísticas de Desempeño")
     st.bar_chart({"Correctas": [20, 35, 30], "Incorrectas": [10, 5, 8]}, use_container_width=True)
+
 
