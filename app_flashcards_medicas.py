@@ -365,43 +365,50 @@ elif st.session_state.page == "Generar Examen":
                 restart_exam()
                 
                 # --- CONEXIÓN REAL A GEMINI API para MÚLTIPLES PREGUNTAS ---
-                    f"Contexto del Estudiante: Nivel {st.session_state.difficulty}, Materia {st.session_state.subject}.",
-                    f"Texto base (Material de estudio):\n---\n{st.session_state.extracted_content}\n---\n",
-                    f"Tu Tarea: Genera {st.session_state.num_questions} preguntas de opción múltiple (4 opciones) basadas *únicamente* en el texto base.",
-                    "Las preguntas deben ser claras, concisas y relevantes al estilo de examen médico.",
-                    "Formato de Respuesta: Responde OBLIGATORIAMENTE en formato JSON. La estructura debe ser una LISTA de objetos:",
-                    """
-                    [
-                      {
-                        "pregunta": "El texto completo de la pregunta 1...",
-                        "opciones": {
-                          "A": "Texto de la opción A",
-                          "B": "Texto de la opción B",
-                          "C": "Texto de la opción C",
-                          "D": "Texto de la opción D"
-                        },
-                        "respuesta_correcta": "B",
-                        "explicacion": "Una breve pero completa explicación médica..."
-                      },
-                      {
-                        "pregunta": "El texto completo de la pregunta 2...",
-                        "opciones": { ... },
-                        "respuesta_correcta": "A",
-                        "explicacion": "..."
-                      }
-                    ]
-                    """
-                ]
-
-                with st.spinner(f"🧠 Gemini está creando tu examen de {st.session_state.num_questions} preguntas..."):
-                    response = model.generate_content(prompt_parts)
-                    clean_response = response.text.strip().replace('```json', '').replace('```', '')
-                    preguntas_json_list = json.loads(clean_response)
+                # BLOQUE RESTAURADO CON INDENTACIÓN CORRECTA
+                try:
+                    genai.configure(api_key=st.session_state.api_key)
+                    model = genai.GenerativeModel(model_name="gemini-2.5-flash-preview-09-2025")
                     
-                    # Guardar en la biblioteca en lugar de iniciar el examen
-                    st.session_state.flashcard_library[deck_name] = preguntas_json_list
-                    st.success(f"¡Mazo '{deck_name}' con {len(preguntas_json_list)} tarjetas guardado con éxito!")
-                    st.balloons()
+                    prompt_parts = [
+                        "Rol: Eres un profesor de medicina experto en crear preguntas de examen tipo USMLE/MIR.",
+                        f"Contexto del Estudiante: Nivel {st.session_state.difficulty}, Materia {st.session_state.subject}.",
+                        f"Texto base (Material de estudio):\n---\n{st.session_state.extracted_content}\n---\n",
+                        f"Tu Tarea: Genera {st.session_state.num_questions} preguntas de opción múltiple (4 opciones) basadas *únicamente* en el texto base.",
+                        "Las preguntas deben ser claras, concisas y relevantes al estilo de examen médico.",
+                        "Formato de Respuesta: Responde OBLIGATORIAMENTE en formato JSON. La estructura debe ser una LISTA de objetos:",
+                        """
+                        [
+                          {
+                            "pregunta": "El texto completo de la pregunta 1...",
+                            "opciones": {
+                              "A": "Texto de la opción A",
+                              "B": "Texto de la opción B",
+                              "C": "Texto de la opción C",
+                              "D": "Texto de la opción D"
+                            },
+                            "respuesta_correcta": "B",
+                            "explicacion": "Una breve pero completa explicación médica..."
+                          },
+                          {
+                            "pregunta": "El texto completo de la pregunta 2...",
+                            "opciones": { "A": "...", "B": "...", "C": "...", "D": "..." },
+                            "respuesta_correcta": "A",
+                            "explicacion": "..."
+                          }
+                        ]
+                        """
+                    ]
+
+                    with st.spinner(f"🧠 Gemini está creando tu examen de {st.session_state.num_questions} preguntas..."):
+                        response = model.generate_content(prompt_parts)
+                        clean_response = response.text.strip().replace('```json', '').replace('```', '')
+                        preguntas_json_list = json.loads(clean_response)
+                        
+                        # Guardar en la biblioteca en lugar de iniciar el examen
+                        st.session_state.flashcard_library[deck_name] = preguntas_json_list
+                        st.success(f"¡Mazo '{deck_name}' con {len(preguntas_json_list)} tarjetas guardado con éxito!")
+                        st.balloons()
 
                 except Exception as e:
                     st.error(f"Error al generar el examen con Gemini: {e}")
@@ -478,9 +485,11 @@ elif st.session_state.page == "Estudiar":
                     {question_card['explicacion']}
                 </div>
                 """, unsafe_allow_html=True)
-                if st.button("Volver a mis mazos", on_click=restart_exam):
-                    st.session_state.page = "Mi Progreso"
-                    st.rerun() 
+            
+            # Botón para volver al final de la revisión
+            if st.button("Volver a mis mazos", on_click=restart_exam):
+                st.session_state.page = "Mi Progreso"
+                st.rerun() 
         
         else:
             # Mostrar la pregunta actual
@@ -506,7 +515,7 @@ elif st.session_state.page == "Estudiar":
             if not st.session_state.show_explanation:
                 if st.button("Responder y ver explicación"):
                     # Capturar la respuesta del radio button (usa la clave única)
-                    current_user_selection = st.session_state[f"user_answer_{idx}"]
+                    current_user_selection = st.session_state.get(f"user_answer_{idx}") # Usar .get() para evitar error si no se selecciona
                     
                     if current_user_selection: # Asegurarse de que el usuario haya seleccionado algo
                         st.session_state.user_answer = current_user_selection # Actualizar el estado global con la selección actual
@@ -573,15 +582,17 @@ elif st.session_state.page == "Mi Progreso":
         with col2:
             # Botón para iniciar el estudio
             if st.button("Iniciar Estudio 🚀", use_container_width=True, type="primary"):
-                restart_exam() # Limpia el estado del examen anterior
-                st.session_state.current_exam = st.session_state.flashcard_library[selected_deck_name]
-                st.session_state.page = "Estudiar"
-                st.rerun()
+                if selected_deck_name: # Asegurarse de que haya algo seleccionado
+                    restart_exam() # Limpia el estado del examen anterior
+                    st.session_state.current_exam = st.session_state.flashcard_library[selected_deck_name]
+                    st.session_state.page = "Estudiar"
+                    st.rerun()
 
             # Botón para eliminar un mazo
             if st.button("🗑️ Eliminar Mazo", use_container_width=True):
-                del st.session_state.flashcard_library[selected_deck_name]
-                st.rerun()
+                if selected_deck_name: # Asegurarse de que haya algo seleccionado
+                    del st.session_state.flashcard_library[selected_deck_name]
+                    st.rerun()
 
     st.markdown("---") # Separador
     
@@ -602,5 +613,4 @@ elif st.session_state.page == "Mi Progreso":
 
     st.subheader("Estadísticas de Desempeño")
     st.bar_chart({"Correctas": [20, 35, 30], "Incorrectas": [10, 5, 8]}, use_container_width=True)
-
 
