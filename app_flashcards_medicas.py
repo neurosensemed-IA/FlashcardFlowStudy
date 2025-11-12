@@ -6,7 +6,18 @@ import pandas as pd
 import io
 import google.generativeai as genai
 import json
+import random # Importar random
 import plotly.graph_objects as go # Importar Plotly
+
+# --- FRASES MOTIVACIONALES ---
+STOIC_QUOTES = [
+    "“El obstáculo es el camino.” — Marco Aurelio",
+    "“La dificultad es lo que despierta al genio.” — Séneca",
+    "“No es que tengamos poco tiempo, sino que perdemos mucho.” — Séneca",
+    "“La excelencia es un hábito, no un acto.” — Aristóteles",
+    "“Un gramo de práctica vale más que una tonelada de teoría.”",
+    "“El éxito es la suma de pequeños esfuerzos repetidos día tras día.” — Robert Collier"
+]
 
 # --- Configuración de la Página ---
 st.set_page_config(
@@ -433,6 +444,11 @@ elif st.session_state.page == "Estudiar":
         if idx >= len(exam):
             st.header("¡Examen Completado! 🥳")
             
+            # --- CITA MOTIVACIONAL ---
+            selected_quote = random.choice(STOIC_QUOTES)
+            st.markdown(f"#### *{selected_quote}*")
+            st.markdown("---")
+            
             correctas = sum(1 for r in st.session_state.exam_results if r['correcta'])
             total = len(exam)
             
@@ -457,7 +473,7 @@ elif st.session_state.page == "Estudiar":
             fig.update_layout(title_text='Resumen de Respuestas', title_x=0.5,
                               paper_bgcolor='rgba(0,0,0,0)',  # Fondo transparente
                               plot_bgcolor='rgba(0,0,0,0)',
-                              font_color=var(--dark-text) # Color de texto
+                              font_color='#F0F0F0' # Color de texto (Corregido)
                               )
             st.plotly_chart(fig, use_container_width=True)
 
@@ -613,4 +629,6 @@ elif st.session_state.page == "Mi Progreso":
 
     st.subheader("Estadísticas de Desempeño")
     st.bar_chart({"Correctas": [20, 35, 30], "Incorrectas": [10, 5, 8]}, use_container_width=True)
+
+
 
