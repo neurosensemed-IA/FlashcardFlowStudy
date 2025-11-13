@@ -185,8 +185,7 @@ def extraer_texto_pptx(file_stream):
 # --- Estado de Sesión ---
 if 'page' not in st.session_state:
     st.session_state.page = "Cargar Contenido"
-if 'api_key' not in st.session_state:
-    st.session_state.api_key = ""
+# 'api_key' ya no se guarda en session_state
 if 'user_name' not in st.session_state:
     st.session_state.user_name = ""
 if 'extracted_content' not in st.session_state:
@@ -218,6 +217,17 @@ def restart_exam():
     st.session_state.user_answer = None
     st.session_state.show_explanation = False
     st.session_state.exam_results = []
+
+# --- Función de chequeo de API Key (Secrets) ---
+def check_api_key():
+    """Verifica si la API Key está en los Secrets."""
+    if "GOOGLE_API_KEY" not in st.secrets:
+        return False
+    if not st.secrets["GOOGLE_API_KEY"]:
+        return False
+    return True
+
+api_key_disponible = check_api_key()
 
 # --- BARRA LATERAL (Navegación) ---
 with st.sidebar:
@@ -256,12 +266,12 @@ with st.sidebar:
         
     st.markdown("---")
     
-    # API Key de Gemini
-    st.session_state.api_key = st.text_input("Google AI API Key", type="password", value=st.session_state.api_key)
-    if st.session_state.api_key:
-        st.success("API Key cargada.")
+    # Ya no se pide la API Key aquí
+    if api_key_disponible:
+        st.success("API de Gemini conectada.")
     else:
-        st.info("Consigue tu API Key gratis en Google AI Studio.")
+        st.error("API Key de Google no configurada.")
+        st.info("El administrador debe configurar 'GOOGLE_API_KEY' en los Secrets de la app.")
 
 # --- CUERPO PRINCIPAL DE LA APP ---
 
@@ -308,16 +318,16 @@ elif st.session_state.page == "Verificación IA":
 
     if not st.session_state.extracted_content:
         st.warning("Por favor, carga un archivo primero en la pestaña 'Cargar Contenido'.")
-    elif not st.session_state.api_key:
-        st.warning("Por favor, introduce tu Google AI API Key en la barra lateral para continuar.")
+    elif not api_key_disponible:
+        st.warning("La API de Google no está configurada. Por favor, contacta al administrador.")
     else:
         st.subheader("Contenido a Verificar:")
         st.text_area("", st.session_state.extracted_content, height=300, key="verif_content")
         
         if st.button("🔬 Analizar Precisión"):
-            # --- CONEXIÓN REAL A GEMINI API ---
+            # --- CONEXIÓN REAL A GEMINI API (usando Secrets) ---
             try:
-                genai.configure(api_key=st.session_state.api_key)
+                genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
                 model = genai.GenerativeModel(model_name="gemini-2.5-flash-preview-09-2025")
                 
                 prompt_parts = [
@@ -339,7 +349,6 @@ elif st.session_state.page == "Verificación IA":
 
             except Exception as e:
                 st.error(f"Error al conectar con Gemini: {e}")
-                st.error("Asegúrate de que la API Key sea correcta.")
 
 # 3. Generador de Preguntas (Página de CREACIÓN)
 elif st.session_state.page == "Generar Examen":
@@ -348,8 +357,8 @@ elif st.session_state.page == "Generar Examen":
 
     if not st.session_state.extracted_content:
         st.warning("Por favor, carga un archivo primero para generar preguntas sobre él.")
-    elif not st.session_state.api_key:
-        st.warning("Por favor, introduce tu Google AI API Key en la barra lateral para continuar.")
+    elif not api_key_disponible:
+        st.warning("La API de Google no está configurada. Por favor, contacta al administrador.")
     else:
         # Nuevo campo para el nombre del mazo
         deck_name = st.text_input("Nombre del Tema (ej. Fisiología Cardíaca - Ciclo):")
@@ -375,10 +384,9 @@ elif st.session_state.page == "Generar Examen":
                 # Limpiar el examen anterior
                 restart_exam()
                 
-                # --- CONEXIÓN REAL A GEMINI API para MÚLTIPLES PREGUNTAS ---
-                # BLOQUE RESTAURADO CON INDENTACIÓN CORRECTA
+                # --- CONEXIÓN REAL A GEMINI API (usando Secrets) ---
                 try:
-                    genai.configure(api_key=st.session_state.api_key)
+                    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
                     model = genai.GenerativeModel(model_name="gemini-2.5-flash-preview-09-2025")
                     
                     prompt_parts = [
@@ -423,7 +431,6 @@ elif st.session_state.page == "Generar Examen":
 
                 except Exception as e:
                     st.error(f"Error al generar el examen con Gemini: {e}")
-                    st.error("Asegúrate de que la API Key sea correcta y el modelo JSON haya funcionado.")
                     st.error(f"Respuesta recibida (para depuración): {response.text if 'response' in locals() else 'No response'}")
 
 # --- PÁGINA DE ESTUDIO (NUEVA) ---
@@ -629,6 +636,3 @@ elif st.session_state.page == "Mi Progreso":
 
     st.subheader("Estadísticas de Desempeño")
     st.bar_chart({"Correctas": [20, 35, 30], "Incorrectas": [10, 5, 8]}, use_container_width=True)
-
-
-
