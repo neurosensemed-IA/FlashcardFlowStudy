@@ -264,9 +264,14 @@ def check_api_key():
     return True
 
 api_key_disponible = check_api_key()
+gemini_model = None
 if api_key_disponible:
-    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-    gemini_model = genai.GenerativeModel(model_name="gemini-2.5-flash-preview-09-2025")
+    try:
+        genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+        gemini_model = genai.GenerativeModel(model_name="gemini-2.5-flash-preview-09-2025")
+    except Exception as e:
+        st.error(f"Error al configurar Gemini: {e}")
+        api_key_disponible = False
 
 # --- Funciones de Base de Datos (Firestore) ---
 
@@ -323,10 +328,6 @@ def delete_user_deck(username, deck_name):
 
 # Configuración de usuarios (esto debería estar en un archivo .yaml y cargado, pero lo ponemos aquí por simplicidad)
 # Los hashes fueron generados previamente
-hashed_passwords = {
-    'drdavid': '$2b$12$T3.eJ6sC3/G.D.rN.8k1U.J2/b.W.8k.Z.b.X.Z.b.W.X.Z', # Reemplazar con hash real de "123"
-    'estudiante1': '$2b$12$T4.eJ6sC3/G.D.rN.8k1U.J2/b.W.8k.Z.b.X.Z.b.W.X.Z' # Reemplazar con hash real de "456"
-}
 hashed_passwords_bcrypt = {
     'drdavid': '$2b$12$Ea2.vLkC5WvVLs/2d/gTnuIuM0l.a2n8aG0i.R.G.l7zQk3k/w.aG', # Hash para "123"
     'estudiante1': '$2b$12$8x.F.vLkC5WvVLs/2d/gTnuIuM0l.a2n8aG0i.R.G.l7zQk3k/w.aG'  # Hash para "456"
@@ -365,7 +366,7 @@ authenticator = stauth.Authenticate(
     config['cookie']['name'],
     config['cookie']['key'],
     config['cookie']['expiry_days'],
-    config['preauthorized']['emails'] # <- ESTA LÍNEA SE AÑADIÓ
+    config['preauthorized']['emails'] # <- ESTA LÍNEA ES LA CORRECCIÓN CLAVE
 )
 
 # --- Renderizar el formulario de Login ---
@@ -478,7 +479,7 @@ if st.session_state["authentication_status"]:
 
         if not st.session_state.extracted_content:
             st.warning("Por favor, carga un archivo primero en la pestaña 'Cargar Contenido'.")
-        elif not api_key_disponible:
+        elif not api_key_disponible or not gemini_model:
             st.warning("La API de Google no está configurada. Por favor, contacta al administrador.")
         else:
             st.subheader("Contenido a Verificar:")
@@ -514,7 +515,7 @@ if st.session_state["authentication_status"]:
 
         if not st.session_state.extracted_content:
             st.warning("Por favor, carga un archivo primero para generar preguntas sobre él.")
-        elif not api_key_disponible:
+        elif not api_key_disponible or not gemini_model:
             st.warning("La API de Google no está configurada. Por favor, contacta al administrador.")
         else:
             # Nuevo campo para el nombre del mazo
@@ -775,7 +776,8 @@ if st.session_state["authentication_status"]:
                 if st.button("🗑️ Eliminar Mazo", use_container_width=True):
                     if selected_deck_name: # Asegurarse de que haya algo seleccionado
                         if delete_user_deck(st.session_state.username, selected_deck_name):
-                            del st.session_state.flashcard_library[selected_deck_name]
+                            if selected_deck_name in st.session_state.flashcard_library:
+                                del st.session_state.flashcard_library[selected_deck_name]
                             st.success(f"Mazo '{selected_deck_name}' eliminado.")
                             st.rerun()
                         else:
@@ -794,7 +796,7 @@ if st.session_state["authentication_status"]:
         with col1:
             st.markdown('<div class="doodle-container">🧬 Dominio Neuro</div>', unsafe_allow_html=True)
         with col2:
-            st.markdown('<div class.="doodle-container">❤️ Fisio Cardíaca</div>', unsafe_allow_html=True)
+            st.markdown('<div class="doodle-container">❤️ Fisio Cardíaca</div>', unsafe_allow_html=True)
         with col3:
             st.markdown('<div class="doodle-container">🧪 Bioquímica</div>', unsafe_allow_html=True)
 
