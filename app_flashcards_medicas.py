@@ -371,7 +371,8 @@ authenticator = stauth.Authenticate(
 st.title("Med-Flash AI 🧬")
 st.markdown("Tu asistente de estudio médico con IA. Por favor, inicia sesión para continuar.")
 
-name, authentication_status, username = authenticator.login('main')
+# CORRECCIÓN: Se usa location='main' como argumento de palabra clave
+name, authentication_status, username = authenticator.login(location='main')
 
 # --- Lógica principal de la APP (POST-LOGIN) ---
 if st.session_state["authentication_status"]:
