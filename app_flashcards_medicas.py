@@ -209,8 +209,7 @@ if 'show_explanation' not in st.session_state:
     st.session_state.show_explanation = False
 if 'exam_results' not in st.session_state:
     st.session_state.exam_results = []
-if "authentication_status" not in st.session_state:
-    st.session_state.authentication_status = None
+# Authentication status inicializado por la librería, no lo sobreescribimos manualmente si ya existe
 
 # --- Funciones de Callback ---
 def go_to_next_question():
@@ -311,7 +310,7 @@ def delete_user_deck(username, deck_name):
 # 1. Definir contraseñas en texto plano
 passwords_plain = ['123', '456']
 
-# 2. Generar hashes usando BCRYPT DIRECTAMENTE para evitar problemas con Hasher
+# 2. Generar hashes usando BCRYPT DIRECTAMENTE
 try:
     hashed_passwords = [bcrypt.hashpw(p.encode(), bcrypt.gensalt()).decode() for p in passwords_plain]
 except Exception as e:
@@ -356,22 +355,24 @@ authenticator = stauth.Authenticate(
 # --- Renderizar el formulario de Login ---
 st.title("Med-Flash AI 🧬")
 
-# Login (Llamada estándar para nuevas versiones)
-name, authentication_status, username = authenticator.login('main')
+# Login (CORRECCIÓN CRÍTICA: Sin desempaquetar variables)
+authenticator.login('main')
 
 # --- Lógica principal (POST-LOGIN) ---
 if st.session_state["authentication_status"]:
     
-    st.session_state.username = username 
-    st.session_state.name = name 
+    # Leer datos del usuario directamente desde st.session_state
+    # (La librería nueva los guarda ahí automáticamente)
+    username_actual = st.session_state["username"]
+    name_actual = st.session_state["name"]
     
     # Cargar biblioteca al inicio
-    st.session_state.flashcard_library = get_user_decks(st.session_state.username)
+    st.session_state.flashcard_library = get_user_decks(username_actual)
 
     # --- BARRA LATERAL ---
     with st.sidebar:
         st.title("Med-Flash AI 🧬")
-        st.markdown(f"Bienvenido, **{st.session_state.name}**")
+        st.markdown(f"Bienvenido, **{name_actual}**")
         authenticator.logout('Cerrar Sesión', 'sidebar')
         
         st.markdown("---")
@@ -525,7 +526,7 @@ if st.session_state["authentication_status"]:
                             clean_response = response.text.strip().replace('```json', '').replace('```', '')
                             preguntas_json_list = json.loads(clean_response)
                             
-                            if save_user_deck(st.session_state.username, deck_name, preguntas_json_list):
+                            if save_user_deck(username_actual, deck_name, preguntas_json_list):
                                 st.session_state.flashcard_library[deck_name] = preguntas_json_list
                                 st.success(f"¡Mazo '{deck_name}' guardado!")
                                 st.balloons()
@@ -619,10 +620,11 @@ if st.session_state["authentication_status"]:
 
     elif st.session_state.page == "Mi Progreso":
         st.header("4. Estudiar y Progreso 🏆")
-        st.subheader(f"Mis Mazos ({st.session_state.name})")
+        st.subheader(f"Mis Mazos ({name_actual})")
         
-        st.session_state.flashcard_library = get_user_decks(st.session_state.username)
-        
+        if not st.session_state.flashcard_library:
+            st.session_state.flashcard_library = get_user_decks(username_actual)
+
         if not st.session_state.flashcard_library:
             st.info("No hay mazos. Ve a 'Generar Examen'.")
         else:
@@ -639,7 +641,7 @@ if st.session_state["authentication_status"]:
                         st.rerun()
                 if st.button("🗑️ Eliminar"):
                     if sel_deck: 
-                        if delete_user_deck(st.session_state.username, sel_deck):
+                        if delete_user_deck(username_actual, sel_deck):
                             del st.session_state.flashcard_library[sel_deck]
                             st.success("Eliminado.")
                             st.rerun()
