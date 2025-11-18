@@ -359,11 +359,13 @@ config = {
     }
 }
 
+# CORRECCIÓN: Se añade el 5º argumento (preauthorized_emails)
 authenticator = stauth.Authenticate(
     config['credentials'],
     config['cookie']['name'],
     config['cookie']['key'],
-    config['cookie']['expiry_days']
+    config['cookie']['expiry_days'],
+    config['preauthorized']['emails'] # <- ESTA LÍNEA SE AÑADIÓ
 )
 
 # --- Renderizar el formulario de Login ---
