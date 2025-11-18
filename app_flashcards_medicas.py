@@ -11,6 +11,7 @@ import plotly.graph_objects as go # Importar Plotly
 import firebase_admin
 from firebase_admin import credentials, firestore
 import streamlit_authenticator as stauth
+from streamlit_authenticator.utilities import Hasher # Importar el Hasher
 import bcrypt
 import yaml # Necesario para streamlit-authenticator
 from yaml.loader import SafeLoader
@@ -318,35 +319,28 @@ def delete_user_deck(username, deck_name):
         st.error(f"Error al eliminar el mazo: {e}")
         return False
 
-# --- CONFIGURACIÓN DE AUTENTICACIÓN ---
-# Hashear contraseñas (SOLO ejecutar una vez localmente para generar los hashes)
-# logged_in = False
-# if not logged_in:
-#     st.write(bcrypt.hashpw("123".encode(), bcrypt.gensalt()).decode()) # Hash para drdavid
-#     st.write(bcrypt.hashpw("456".encode(), bcrypt.gensalt()).decode()) # Hash para estudiante1
-#     logged_in = True
+# --- CONFIGURACIÓN DE AUTENTICACIÓN (CORREGIDA) ---
 
-# Configuración de usuarios (esto debería estar en un archivo .yaml y cargado, pero lo ponemos aquí por simplicidad)
-# Los hashes fueron generados previamente
-hashed_passwords_bcrypt = {
-    'drdavid': '$2b$12$Ea2.vLkC5WvVLs/2d/gTnuIuM0l.a2n8aG0i.R.G.l7zQk3k/w.aG', # Hash para "123"
-    'estudiante1': '$2b$12$8x.F.vLkC5WvVLs/2d/gTnuIuM0l.a2n8aG0i.R.G.l7zQk3k/w.aG'  # Hash para "456"
-}
+# 1. Definir contraseñas en texto plano (solo para esta configuración)
+passwords_plain = ['123', '456']
 
-# --- Cargar configuración de YAML (simulado aquí) ---
-# En un despliegue real, esto vendría de un archivo config.yaml
+# 2. Generar hashes seguros (esto se ejecutará solo una vez en el servidor y se cacheará)
+# NOTA: Si cambia las contraseñas, Streamlit Cloud reiniciará y generará nuevos hashes.
+hashed_passwords = Hasher(passwords_plain).generate()
+
+# 3. Crear el diccionario de configuración con los hashes generados
 config = {
     'credentials': {
         'usernames': {
             'drdavid': {
                 'email': 'david@medflash.ai',
                 'name': 'Dr. David',
-                'password': hashed_passwords_bcrypt['drdavid'] # Usar el hash bcrypt
+                'password': hashed_passwords[0] # Hash para "123"
             },
             'estudiante1': {
                 'email': 'est1@medflash.ai',
                 'name': 'Estudiante Uno',
-                'password': hashed_passwords_bcrypt['estudiante1'] # Usar el hash bcrypt
+                'password': hashed_passwords[1] # Hash para "456"
             }
         }
     },
@@ -356,25 +350,25 @@ config = {
         'name': 'medflash_auth_cookie'
     },
     'preauthorized': {
-        'emails': ['david@medflash.ai']
+        'emails': ['david@medflash.ai', 'est1@medflash.ai'] # Añadir todos los emails preautorizados
     }
 }
 
-# CORRECCIÓN: Se añade el 5º argumento (preauthorized_emails)
+# 4. Inicializar el autenticador
+# Esta es la sintaxis correcta con los 5 argumentos
 authenticator = stauth.Authenticate(
     config['credentials'],
     config['cookie']['name'],
     config['cookie']['key'],
     config['cookie']['expiry_days'],
-    config['preauthorized']['emails'] # <- ESTA LÍNEA ES LA CORRECCIÓN CLAVE
+    config['preauthorized']['emails']
 )
 
 # --- Renderizar el formulario de Login ---
-# Esto debe ejecutarse antes de cualquier otra lógica de UI
 st.title("Med-Flash AI 🧬")
 st.markdown("Tu asistente de estudio médico con IA. Por favor, inicia sesión para continuar.")
 
-# CORRECCIÓN: Se usa location='main' como argumento de palabra clave
+# Esta es la sintaxis correcta de login
 name, authentication_status, username = authenticator.login(location='main')
 
 # --- Lógica principal de la APP (POST-LOGIN) ---
