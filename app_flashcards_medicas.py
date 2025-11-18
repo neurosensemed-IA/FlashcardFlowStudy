@@ -1,3 +1,4 @@
+# Versión con control de dependencias
 import streamlit as st
 from PIL import Image
 import fitz  # PyMuPDF
