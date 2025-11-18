@@ -5,3 +5,6 @@ python-pptx
 pandas
 google-generativeai
 plotly
+firebase-admin
+streamlit-authenticator
+bcrypt
