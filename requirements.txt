@@ -8,3 +8,4 @@ plotly
 firebase-admin
 streamlit-authenticator
 bcrypt
+PyYAML
