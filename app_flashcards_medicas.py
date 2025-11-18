@@ -11,7 +11,6 @@ import plotly.graph_objects as go
 import firebase_admin
 from firebase_admin import credentials, firestore
 import streamlit_authenticator as stauth
-from streamlit_authenticator.utilities.hasher import Hasher
 import bcrypt
 import yaml
 from yaml.loader import SafeLoader
@@ -312,9 +311,9 @@ def delete_user_deck(username, deck_name):
 # 1. Definir contraseñas en texto plano
 passwords_plain = ['123', '456']
 
-# 2. Generar hashes 
+# 2. Generar hashes usando BCRYPT DIRECTAMENTE para evitar problemas con Hasher
 try:
-    hashed_passwords = Hasher(passwords_plain).generate()
+    hashed_passwords = [bcrypt.hashpw(p.encode(), bcrypt.gensalt()).decode() for p in passwords_plain]
 except Exception as e:
     st.error(f"Error generando hashes: {e}")
     hashed_passwords = []
@@ -357,8 +356,8 @@ authenticator = stauth.Authenticate(
 # --- Renderizar el formulario de Login ---
 st.title("Med-Flash AI 🧬")
 
-# Login
-name, authentication_status, username = authenticator.login(location='main')
+# Login (Llamada estándar para nuevas versiones)
+name, authentication_status, username = authenticator.login('main')
 
 # --- Lógica principal (POST-LOGIN) ---
 if st.session_state["authentication_status"]:
