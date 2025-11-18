@@ -11,7 +11,7 @@ import plotly.graph_objects as go # Importar Plotly
 import firebase_admin
 from firebase_admin import credentials, firestore
 import streamlit_authenticator as stauth
-from streamlit_authenticator.utilities import Hasher # Importar el Hasher
+from streamlit_authenticator.utilities.hasher import Hasher # Importar el Hasher (CORRECCIÓN)
 import bcrypt
 import yaml # Necesario para streamlit-authenticator
 from yaml.loader import SafeLoader
@@ -326,8 +326,8 @@ passwords_plain = ['123', '456']
 
 # 2. Generar hashes seguros (esto se ejecutará solo una vez en el servidor y se cacheará)
 # NOTA: Si cambia las contraseñas, Streamlit Cloud reiniciará y generará nuevos hashes.
-# CORRECCIÓN: passwords_plain va en .generate(), no en Hasher()
-hashed_passwords = Hasher().generate(passwords_plain)
+# CORRECCIÓN FINAL: La sintaxis correcta es pasar las contraseñas al constructor.
+hashed_passwords = Hasher(passwords_plain).generate()
 
 # 3. Crear el diccionario de configuración con los hashes generados
 config = {
