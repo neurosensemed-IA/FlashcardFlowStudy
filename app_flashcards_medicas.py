@@ -326,7 +326,8 @@ passwords_plain = ['123', '456']
 
 # 2. Generar hashes seguros (esto se ejecutará solo una vez en el servidor y se cacheará)
 # NOTA: Si cambia las contraseñas, Streamlit Cloud reiniciará y generará nuevos hashes.
-hashed_passwords = Hasher(passwords_plain).generate()
+# CORRECCIÓN: passwords_plain va en .generate(), no en Hasher()
+hashed_passwords = Hasher().generate(passwords_plain)
 
 # 3. Crear el diccionario de configuración con los hashes generados
 config = {
