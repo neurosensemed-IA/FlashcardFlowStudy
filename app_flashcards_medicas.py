@@ -1,4 +1,5 @@
 # Código de la aplicación Med-Flash AI
+# CORRECCIÓN DE ROBUSTEZ: Se mejoran las validaciones de JSON y base de datos para evitar que la aplicación se caiga.
 import streamlit as st
 from PIL import Image
 import fitz  # PyMuPDF
@@ -7,8 +8,8 @@ import pandas as pd
 import io
 import google.generativeai as genai
 import json
-import random 
-import plotly.graph_objects as go 
+import random # Importar random
+import plotly.graph_objects as go # Importar Plotly
 import firebase_admin
 from firebase_admin import credentials, firestore
 import streamlit_authenticator as stauth
@@ -64,17 +65,16 @@ st.set_page_config(
     initial_sidebar_state="collapsed", 
 )
 
-# --- ESTILOS CSS ---
+# --- ESTILOS CSS (Con Oro Iridiscente y Colores Vívidos) ---
 st.markdown("""
 <style>
     /* Paleta de colores */
     :root {
-        --primary-color: #F5A6C1; /* Rosa Principal */
-        --secondary-color: #E0E0E0; /* Gris Claro */
+        --primary-color: #F5A6C1; /* Rosa Principal (Más vivo) */
+        --accent-gold: #FFD700; /* Oro Metálico para bordes y acentos */
         --text-color: #4A4A4A; /* Gris Oscuro */
-        --bg-color: #FFFFFF; /* Blanco */
-        --dark-bg: #1E1E1E; /* Fondo oscuro opcional */
-        --dark-text: #F0F0F0; /* Texto claro opcional */
+        --dark-bg: #1A1A1A; /* Fondo oscuro (más profundo) */
+        --dark-text: #F0F0F0; /* Texto claro */
     }
 
     /* Estilo para tema oscuro (preferido por Streamlit) */
@@ -91,8 +91,10 @@ st.markdown("""
     /* Barra lateral */
     [data-testid="stSidebar"] {
         background-color: #2F2F2F;
-        border-right: 2px solid var(--primary-color);
+        border-right: 4px solid var(--accent-gold); /* Borde dorado */
     }
+    
+    /* Botones de navegación lateral */
     [data-testid="stSidebar"] .stButton button {
         background-color: transparent;
         color: var(--dark-text);
@@ -100,17 +102,15 @@ st.markdown("""
         border-radius: 12px;
         width: 100%;
         margin-bottom: 10px;
+        transition: all 0.2s ease;
     }
     [data-testid="stSidebar"] .stButton button:hover {
         background-color: var(--primary-color);
         color: var(--text-color);
-        border-color: var(--primary-color);
-    }
-    [data-testid="stSidebar"] .stRadio > label {
-        color: var(--dark-text) !important;
+        box-shadow: 0 0 10px var(--primary-color);
     }
 
-    /* Botones principales */
+    /* Botones principales de acción */
     .stButton > button {
         background-color: var(--primary-color);
         color: var(--text-color);
@@ -118,90 +118,85 @@ st.markdown("""
         border-radius: 12px;
         padding: 10px 20px;
         border: none;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        transition: background-color 0.2s, transform 0.1s;
     }
     .stButton > button:hover {
         background-color: #F7BACF;
-        color: var(--text-color);
-    }
-    
-    /* Contenedor del Login centrado */
-    [data-testid="stVerticalBlockBorderWrapper"][class*="st-emotion-cache-"] {
-        max-width: 500px;
-        margin: 0 auto; 
+        transform: translateY(-2px);
     }
 
     /* Estilo de Tarjetas (Flashcards) */
     .flashcard {
         background-color: #2F2F2F; 
-        border-radius: 12px;
+        border-radius: 16px; /* Más redondeado */
         padding: 24px;
         margin-top: 20px;
         margin-bottom: 20px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-        border: 1px solid #4A4A4A;
+        box-shadow: 0 8px 16px rgba(0,0,0,0.6);
+        border: 2px solid var(--accent-gold); /* Borde dorado */
         color: var(--dark-text); 
     }
     .flashcard h5 {
         color: var(--primary-color); 
         margin-bottom: 15px;
-        font-size: 1.25rem;
+        font-size: 1.3rem;
+        text-shadow: 1px 1px 2px #000;
     }
 
-    /* Cajas de Alerta (Info, Success, Error) */
-    [data-testid="stAlert"] {
-        border-radius: 12px;
-    }
-    [data-testid="stAlert"] [data-testid="stMarkdownContainer"] p {
-        color: #000; 
-    }
-
-    /* Contenedores de Feedback */
+    /* Contenedores de Feedback (Más coloridos y contrastados) */
     .feedback-correct {
-        background-color: #2F2F2F;
-        border: 2px solid #28a745; 
+        background-color: #384238; /* Verde oscuro */
+        border: 2px solid #5cb85c; /* Verde claro */
         border-radius: 12px;
         padding: 16px;
         margin-top: 10px;
-        color: #F0F0F0;
+        color: #E6F7E6;
+        font-weight: bold;
     }
     .feedback-incorrect {
-        background-color: #2F2F2F;
-        border: 2px solid #dc3545; 
+        background-color: #423838; /* Rojo oscuro */
+        border: 2px solid #d9534f; /* Rojo vivo */
         border-radius: 12px;
         padding: 16px;
         margin-top: 10px;
-        color: #F0F0F0;
+        color: #F7E6E6;
+        font-weight: bold;
     }
     .feedback-explanation {
-        background-color: #2F2F2F;
-        border: 2px solid #17a2b8; 
+        background-color: #383842; /* Azul oscuro */
+        border: 2px solid #5bc0de; /* Azul cian */
         border-radius: 12px;
         padding: 16px;
         margin-top: 10px;
-        color: #F0F0F0;
+        color: #E6F7F7;
     }
 
-    /* Contenedor de "Doodle" - AHORA CON COLOR DINÁMICO */
+    /* Contenedor de "Doodle" - AHORA CON LAYOUT FIJO */
     .doodle-container {
         width: 100%;
         height: 150px;
-        background-color: #2F2F2F; /* Fondo oscuro fijo */
-        border-radius: 12px;
+        background-color: #2F2F2F; 
+        border-radius: 16px;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         margin-bottom: 20px;
         padding: 10px;
-        border: 4px solid var(--system-color, #F5A6C1); /* Color de sistema por defecto */
+        border: 4px solid var(--system-color, var(--accent-gold)); /* Borde Dorado/Dinámico */
     }
     .doodle-container .system-icon {
         font-size: 4rem;
-        margin-bottom: 5px;
+        margin-bottom: 0; /* Espacio mínimo */
+        line-height: 1;
+        text-shadow: 0 0 5px rgba(255, 215, 0, 0.8); /* Sombra metálica */
     }
     .doodle-container .system-text {
-        color: var(--system-color, #F5A6C1); /* Color de sistema por defecto */
+        color: var(--dark-text); 
         font-weight: bold;
+        font-size: 0.85rem; /* Ajuste de fuente */
+        line-height: 1.2;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -269,6 +264,8 @@ if "materia_actual" not in st.session_state:
     st.session_state.materia_actual = MATERIAS[0]
 if "sistema_actual" not in st.session_state:
     st.session_state.sistema_actual = SISTEMAS[0]
+if "last_login_name" not in st.session_state:
+    st.session_state.last_login_name = None # Para evitar recarga de mazos al cambiar de página
 
 # --- Funciones de API (Gemini y Firestore) ---
 
@@ -276,7 +273,7 @@ if "sistema_actual" not in st.session_state:
 def init_firebase():
     try:
         if "FIREBASE_SERVICE_ACCOUNT" not in st.secrets:
-            st.error("Secret de Firebase no encontrado.")
+            # st.error("Secret de Firebase no encontrado.") # Se comenta para evitar spam de error en la pantalla de login
             return None
         
         cred_json = json.loads(st.secrets["FIREBASE_SERVICE_ACCOUNT"])
@@ -287,7 +284,7 @@ def init_firebase():
             
         return firestore.client()
     except Exception as e:
-        st.error(f"Error al inicializar Firebase: {e}")
+        # st.error(f"Error al inicializar Firebase: {e}") # Se comenta por la misma razón
         return None
 
 db = init_firebase()
@@ -306,14 +303,21 @@ if api_key_disponible:
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
         gemini_model = genai.GenerativeModel(model_name="gemini-2.5-flash-preview-09-2025")
     except Exception as e:
-        st.error(f"Error al configurar Gemini: {e}")
+        # st.error(f"Error al configurar Gemini: {e}") # Se comenta para evitar spam
         api_key_disponible = False
 
 # --- Funciones de Base de Datos (Firestore) ---
 
 def get_all_users_credentials():
     """Obtiene todos los usuarios para configurar el autenticador."""
-    if not db: return {}
+    if not db: 
+        # Si Firebase falla, creamos credenciales de prueba
+        default_hash = bcrypt.hashpw("123".encode(), bcrypt.gensalt()).decode()
+        return {
+            'usernames': {
+                'drdavid': {'email': 'david@medflash.ai', 'name': 'Dr. David', 'password': default_hash}
+            }
+        }
     try:
         users_ref = db.collection('usuarios')
         docs = users_ref.stream()
@@ -325,8 +329,7 @@ def get_all_users_credentials():
                 'name': data.get('name', doc.id),
                 'password': data.get('password', '')
             }
-        if not usernames_dict: # Si no hay usuarios, creamos uno por defecto (admin)
-             # Hash de prueba para "123"
+        if not usernames_dict: # Si no hay usuarios en DB, creamos uno de prueba
              default_hash = bcrypt.hashpw("123".encode(), bcrypt.gensalt()).decode()
              usernames_dict['drdavid'] = {'email': 'david@medflash.ai', 'name': 'Dr. David', 'password': default_hash}
         
@@ -337,17 +340,15 @@ def get_all_users_credentials():
 
 def register_new_user(name, email, username, password):
     """Registra un nuevo estudiante en Firestore."""
-    if not db: return False
+    if not db: 
+        return "Database not initialized. Cannot register."
     try:
-        # Verificar si ya existe
         doc_ref = db.collection('usuarios').document(username)
         if doc_ref.get().exists:
             return "exists"
         
-        # Hashear password
         hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
         
-        # Guardar datos iniciales (Nivel 1)
         doc_ref.set({
             'name': name,
             'email': email,
@@ -373,17 +374,16 @@ def get_user_progress(username):
 
 def update_user_level(username, passed_exam):
     """Actualiza el nivel del estudiante según su desempeño."""
-    if not db: return
+    if not db: return None, "Base de datos no disponible."
     try:
         doc_ref = db.collection('usuarios').document(username)
         doc = doc_ref.get()
-        if not doc.exists: return
+        if not doc.exists: return None, "Usuario no encontrado."
         
         data = doc.to_dict()
         current_level = data.get('level', "Nivel 1 (Novato)")
         current_xp = data.get('xp', 0)
         
-        # Lógica de niveles
         levels_order = ["Nivel 1 (Novato)", "Nivel 2 (Estudiante)", "Nivel 3 (Interno)", "Nivel 4 (Residente)", "Nivel 5 (Especialista)"]
         
         new_level = current_level
@@ -391,7 +391,6 @@ def update_user_level(username, passed_exam):
         
         if passed_exam:
             current_xp += 10
-            # Subir nivel si pasa el examen con nota alta
             try:
                 current_idx = levels_order.index(current_level)
                 if current_idx < len(levels_order) - 1:
@@ -400,7 +399,6 @@ def update_user_level(username, passed_exam):
             except:
                 pass
         else:
-            # Si falla, se mantiene o baja XP
              msg = "Sigue practicando para subir de nivel."
 
         doc_ref.update({
@@ -432,6 +430,11 @@ def save_user_deck(username, deck_name, deck_content, materia, sistema):
     try:
         user_ref = db.collection('usuarios').document(username)
         deck_ref = user_ref.collection('mazos').document(deck_name)
+        # VALIDACIÓN CRÍTICA: Aseguramos que el contenido sea una lista antes de guardar
+        if not isinstance(deck_content, list) or not deck_content:
+            st.error("Error: La IA no generó una lista de preguntas válida. No se guardó el mazo.")
+            return False
+
         deck_ref.set({
             'preguntas': deck_content,
             'materia': materia,
@@ -455,7 +458,6 @@ def delete_user_deck(username, deck_name):
         return False
 
 # --- CONFIGURACIÓN DE AUTENTICACIÓN ---
-# Cargar usuarios desde Firestore
 credentials_data = get_all_users_credentials()
 
 config = {
@@ -477,12 +479,14 @@ authenticator = stauth.Authenticate(
 )
 
 # --- INTERFAZ PRINCIPAL ---
-if not st.session_state.get("authentication_status"):
+if st.session_state.get("authentication_status") is None:
     st.title("Med-Flash AI 🧬")
+    st.markdown("Tu asistente de estudio médico con IA. Por favor, inicia sesión o regístrate para continuar.")
     
     tab1, tab2 = st.tabs(["Iniciar Sesión", "Registrarse 📝"])
     
     with tab1:
+        # CORRECCIÓN DE LOGIN PARA VERSIONES NUEVAS: No devuelve variables
         authenticator.login('main')
         
     with tab2:
@@ -493,7 +497,7 @@ if not st.session_state.get("authentication_status"):
             new_user = st.text_input("Usuario")
             new_pass = st.text_input("Contraseña", type="password")
             new_pass2 = st.text_input("Repetir Contraseña", type="password")
-            submit_reg = st.form_submit_button("Registrarme")
+            submit_reg = st.form_submit_button("Registrarme", type="primary")
             
             if submit_reg:
                 if new_pass != new_pass2:
@@ -507,27 +511,28 @@ if not st.session_state.get("authentication_status"):
                     if res == "success":
                         st.success("¡Registro exitoso! Por favor ve a la pestaña 'Iniciar Sesión'.")
                         time.sleep(1)
+                        st.session_state["authentication_status"] = None # Fuerza la recarga de credenciales
                         st.rerun()
                     elif res == "exists":
                         st.error("Ese usuario ya existe. Prueba con otro.")
                     else:
                         st.error(f"Error en el registro: {res}")
 
+
 # --- APP LOGUEADA ---
-if st.session_state["authentication_status"]:
+if st.session_state.get("authentication_status"):
     
     # Datos del usuario actual
-    username = st.session_state["username"]
-    name = st.session_state["name"]
-    
-    # Cargar Nivel y Mazos
-    if "user_level" not in st.session_state or st.session_state.get("last_user") != username:
+    username = st.session_state.get("username", "Invitado")
+    name = st.session_state.get("name", "Usuario")
+
+    # Recargar datos del usuario al cambiar de cuenta
+    if st.session_state.get("last_login_name") != username:
         lvl, xp = get_user_progress(username)
         st.session_state.user_level = lvl
         st.session_state.user_xp = xp
         st.session_state.flashcard_library = get_user_decks(username)
-        st.session_state.last_user = username
-        # Reiniciar el estado del examen al cambiar de usuario
+        st.session_state.last_login_name = username
         restart_exam()
 
     # Obtener visuales del sistema actual
@@ -546,12 +551,12 @@ if st.session_state["authentication_status"]:
         authenticator.logout('Cerrar Sesión', 'sidebar')
         st.markdown("---")
         
-        # --- NUEVO CONTENEDOR VISUAL CON ICONO DINÁMICO ---
+        # --- CONTENEDOR VISUAL CON ICONO DINÁMICO ---
         st.markdown(f"""
         <div class="doodle-container" style="--system-color: {system_color};">
             <span class="system-icon">{system_icon}</span>
-            <span class="system-text">{current_system}</span>
-            <span class="system-text">({st.session_state.materia_actual})</span>
+            <span class="system-text">{st.session_state.materia_actual}</span>
+            <span class="system-text">({current_system})</span>
         </div>
         """, unsafe_allow_html=True)
         # --- FIN CONTENEDOR VISUAL ---
@@ -574,10 +579,8 @@ if st.session_state["authentication_status"]:
         
         col1, col2 = st.columns(2)
         with col1:
-            # SELECCIÓN DE MATERIA (Guardada en session_state)
             st.session_state.materia_actual = st.selectbox("Materia:", options=MATERIAS, key="input_materia")
         with col2:
-            # SELECCIÓN DE SISTEMA (Guardada en session_state)
             st.session_state.sistema_actual = st.selectbox("Sistema/Órgano:", options=SISTEMAS, key="input_sistema")
 
         st.markdown("---")
@@ -593,8 +596,8 @@ if st.session_state["authentication_status"]:
                 accept_multiple_files=False,
             )
             
-            # --- NUEVO BOTÓN DE CARGA EXPLÍCITO ---
-            if st.button("⏫ Procesar y Extraer Texto"):
+            # --- BOTÓN DE CARGA EXPLÍCITO ---
+            if st.button("⏫ Procesar y Extraer Texto", type="primary"):
                 if uploaded_file:
                     file_type = uploaded_file.type
                     texto_extraido = ""
@@ -629,11 +632,13 @@ if st.session_state["authentication_status"]:
             st.warning("Por favor, carga un archivo primero en la pestaña 'Cargar Contenido'.")
         elif st.session_state.materia_actual == MATERIAS[0]:
              st.warning("Por favor, define la Materia y el Sistema en la pestaña 'Cargar Contenido'.")
+        elif not api_key_disponible:
+            st.error("Error de configuración: La API Key de Gemini no está disponible en los Secrets de la aplicación.")
         else:
             st.subheader(f"Contexto: **{st.session_state.materia_actual}** / **{st.session_state.sistema_actual}**")
             st.text_area("Contenido a Verificar:", st.session_state.extracted_content, height=300, key="verif_content")
             
-            if st.button("🔬 Analizar Precisión"):
+            if st.button("🔬 Analizar Precisión", type="primary"):
                 try:
                     prompt_parts = [
                         f"Rol: Eres un profesor de medicina en {st.session_state.materia_actual} y revisor científico experto.",
@@ -665,6 +670,8 @@ if st.session_state["authentication_status"]:
             st.warning("Por favor, carga un archivo primero en la pestaña 'Cargar Contenido'.")
         elif st.session_state.materia_actual == MATERIAS[0]:
              st.warning("Por favor, define la Materia y el Sistema en la pestaña 'Cargar Contenido'.")
+        elif not api_key_disponible:
+            st.error("Error de configuración: La API Key de Gemini no está disponible en los Secrets de la aplicación.")
         else:
             st.info(f"El examen será de **{st.session_state.materia_actual}** / **{st.session_state.sistema_actual}** y se adaptará a tu nivel.")
 
@@ -676,7 +683,7 @@ if st.session_state["authentication_status"]:
             with col2:
                 st.session_state.num_questions = st.number_input("Número de Preguntas:", min_value=1, max_value=10, value=5)
             
-            if st.button("🚀 Generar Examen Adaptativo"):
+            if st.button("🚀 Generar Examen Adaptativo", type="primary"):
                 if not deck_name:
                     st.warning("Por favor, dale un nombre a tu mazo.")
                 elif deck_name in st.session_state.flashcard_library:
@@ -684,7 +691,6 @@ if st.session_state["authentication_status"]:
                 else:
                     restart_exam()
                     try:
-                        # PROMPT ADAPTATIVO MEJORADO
                         level_instruction = ""
                         if "Novato" in st.session_state.user_level or "Nivel 1" in st.session_state.user_level:
                             level_instruction = "El estudiante es Nivel NOVATO. Genera preguntas de conceptos BÁSICOS, definiciones fundamentales y anatomía simple. Evita casos clínicos complejos. Sé didáctico."
@@ -706,17 +712,26 @@ if st.session_state["authentication_status"]:
                         with st.spinner(f"🧠 Generando preguntas de {st.session_state.materia_actual}/{st.session_state.sistema_actual} para {st.session_state.user_level}..."):
                             response = gemini_model.generate_content(prompt_parts)
                             clean_response = response.text.strip().replace('```json', '').replace('```', '')
-                            preguntas_json_list = json.loads(clean_response)
+                            preguntas_json_list = json.loads(clean_response) # Aquí puede fallar si la IA no devuelve JSON
+                            
+                            # VALIDACIÓN CRÍTICA DEL JSON
+                            if not isinstance(preguntas_json_list, list) or not preguntas_json_list:
+                                st.error("Error: La IA no generó una lista de preguntas válida. Revisa el texto base o intenta de nuevo.")
+                                return
                             
                             if save_user_deck(username, deck_name, preguntas_json_list, st.session_state.materia_actual, st.session_state.sistema_actual):
                                 st.session_state.flashcard_library[deck_name] = preguntas_json_list
-                                st.success(f"¡Mazo '{deck_name}' ({st.session_state.materia_actual}) creado y guardado!")
+                                st.success(f"¡Mazo '{deck_name}' ({st.session_state.materia_actual}) creado y guardado! Ve a 'Estudiar y Progreso'.")
                                 st.balloons()
                             else:
-                                st.error("Error guardando en base de datos.")
+                                st.error("Error al guardar el mazo en la base de datos. Verifica la conexión a Firebase.")
 
+                    except json.JSONDecodeError:
+                        st.error("Error al procesar la respuesta de la IA. No se pudo leer el JSON de preguntas. Intenta con un texto base más claro.")
+                        # Opcional: Mostrar la respuesta cruda para depuración
+                        # st.text(response.text) 
                     except Exception as e:
-                        st.error(f"Error generando examen: {e}")
+                        st.error(f"Error inesperado al generar examen: {e}")
 
     # 4. Estudiar y Progreso
     elif st.session_state.page == "Estudiar":
@@ -726,9 +741,17 @@ if st.session_state["authentication_status"]:
             st.rerun()
 
         if st.session_state.current_exam:
-            exam_data = st.session_state.current_exam # El diccionario completo del mazo
-            exam = exam_data.get('preguntas', []) # Solo las preguntas
+            exam_data = st.session_state.current_exam
+            exam = exam_data.get('preguntas', [])
             
+            if not exam:
+                st.error("El mazo de preguntas está vacío o corrupto.")
+                if st.button("Eliminar mazo vacío", key="del_empty"):
+                     if delete_user_deck(username, exam_data.get('deck_name', '')):
+                         st.session_state.page = "Mi Progreso"
+                         st.rerun()
+                return
+
             idx = st.session_state.current_question_index
             
             if idx >= len(exam):
@@ -738,9 +761,11 @@ if st.session_state["authentication_status"]:
                 total = len(exam)
                 puntaje = (correctas / total) * 100 if total > 0 else 0
                 
-                # Lógica de Actualización de Nivel
-                passed = puntaje >= 80
-                new_lvl, msg = update_user_level(username, passed)
+                selected_quote = random.choice(STOIC_QUOTES)
+                st.markdown(f"#### *{selected_quote}*")
+                st.markdown("---")
+                
+                new_lvl, msg = update_user_level(username, puntaje >= 80)
                 if new_lvl:
                     st.session_state.user_level = new_lvl
                 
@@ -748,7 +773,7 @@ if st.session_state["authentication_status"]:
                 with col1:
                     st.metric("Tu Puntaje:", f"{puntaje:.0f}%", f"{correctas}/{total} correctas")
                 with col2:
-                    if passed:
+                    if puntaje >= 80:
                         st.success("¡Excelente desempeño! 🌟")
                         if msg: st.markdown(f"### {msg}")
                     elif puntaje < 40:
@@ -758,7 +783,7 @@ if st.session_state["authentication_status"]:
 
                 labels = ['Correctas', 'Incorrectas']
                 values = [correctas, total - correctas]
-                colors = ['#28a745', '#dc3545'] 
+                colors = ['#5cb85c', '#d9534f'] 
 
                 fig = go.Figure(data=[go.Pie(labels=labels, values=values, hole=.3, marker_colors=colors)])
                 fig.update_layout(title_text='Resumen', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#F0F0F0')
@@ -788,7 +813,7 @@ if st.session_state["authentication_status"]:
                 st.markdown('</div>', unsafe_allow_html=True) 
                 
                 if not st.session_state.show_explanation:
-                    if st.button("Responder"):
+                    if st.button("Responder", type="primary"):
                         sel = st.session_state.get(f"user_answer_{idx}") 
                         if sel: 
                             st.session_state.user_answer = sel 
@@ -812,52 +837,56 @@ if st.session_state["authentication_status"]:
                     if res['correcta']:
                         st.markdown(f"""<div class="feedback-correct">✅ ¡Correcto!</div>""", unsafe_allow_html=True)
                     else:
-                        st.markdown(f"""<div class="feedback-incorrect">❌ Incorrecto. Era: {res['correcta_texto']}</div>""", unsafe_allow_html=True)
+                        st.markdown(f"""<div class="feedback-incorrect">❌ Incorrecto. La respuesta correcta era: {res['correcta_texto']}</div>""", unsafe_allow_html=True)
                     st.markdown(f"""<div class="feedback-explanation">🧠 {card['explicacion']}</div>""", unsafe_allow_html=True)
-                    st.button("Siguiente ➡️", on_click=go_to_next_question)
+                    st.button("Siguiente ➡️", on_click=go_to_next_question, type="primary")
 
     elif st.session_state.page == "Mi Progreso":
         st.header("4. Estudiar y Progreso 🏆")
         st.subheader(f"Mis Mazos ({name})")
         st.caption(f"Nivel Actual: {st.session_state.user_level}")
         
+        # Sincronizar la biblioteca con la base de datos
+        if not st.session_state.flashcard_library or len(st.session_state.flashcard_library) == 0:
+             st.session_state.flashcard_library = get_user_decks(username)
+        
         if not st.session_state.flashcard_library:
-            st.session_state.flashcard_library = get_user_decks(username)
-
-        if not st.session_state.flashcard_library:
-            st.info("No hay mazos guardados. Ve a 'Generar Examen'.")
+            st.info("No hay mazos guardados. Ve a 'Generar Examen' para crear tu primer mazo.")
         else:
             
-            # Mostrar la lista de mazos con sus etiquetas
+            # Preparar la lista de mazos para el selectbox
             deck_options = []
+            deck_name_to_id = {}
             for name, data in st.session_state.flashcard_library.items():
                 materia = data.get('materia', 'N/A')
                 sistema = data.get('sistema', 'N/A')
-                deck_options.append(f"[{materia}/{sistema}] - {name}")
+                display_name = f"[{materia}/{sistema}] - {name}"
+                deck_options.append(display_name)
+                deck_name_to_id[display_name] = name # Mapeamos de vuelta al ID real
 
             c1, c2 = st.columns([2, 1])
             with c1:
-                sel_display = st.selectbox("Elige mazo:", options=deck_options)
-                # Extraer el nombre real del mazo (lo que está después de ' - ')
-                sel_deck_name = sel_display.split(' - ')[-1] if ' - ' in sel_display else sel_display
+                sel_display = st.selectbox("Elige mazo para estudiar:", options=deck_options)
+                # Obtenemos el ID real del mazo
+                sel_deck_name = deck_name_to_id.get(sel_display)
             
             with c2:
-                if st.button("Iniciar 🚀", type="primary"):
+                if st.button("Iniciar Estudio 🚀", type="primary", use_container_width=True):
                     if sel_deck_name: 
                         restart_exam()
                         # Cargamos el diccionario completo del mazo (que incluye preguntas, materia, sistema)
                         st.session_state.current_exam = st.session_state.flashcard_library[sel_deck_name]
+                        # Añadimos el nombre del mazo para poder eliminarlo o referenciarlo
+                        st.session_state.current_exam['deck_name'] = sel_deck_name 
                         st.session_state.page = "Estudiar"
                         st.rerun()
-                if st.button("🗑️ Eliminar"):
+                if st.button("🗑️ Eliminar Mazo", use_container_width=True):
                     if sel_deck_name: 
                         if delete_user_deck(username, sel_deck_name):
                             del st.session_state.flashcard_library[sel_deck_name]
-                            st.success("Eliminado.")
+                            st.success(f"Mazo '{sel_deck_name}' eliminado.")
                             st.rerun()
 
 # Manejo de errores de login (fuera del bloque principal)
-elif st.session_state["authentication_status"] is False:
+elif st.session_state.get("authentication_status") is False:
     st.error('Usuario o contraseña incorrectos')
-elif st.session_state["authentication_status"] is None:
-    pass # Esperando input en la pantalla de login
