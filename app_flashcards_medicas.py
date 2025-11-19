@@ -1,5 +1,5 @@
 # Código de la aplicación Med-Flash AI
-# CORRECCIÓN FINAL: Eliminación del bloque de código conflictivo con 'return' para resolver el SyntaxError persistente.
+# CORRECCIÓN FINAL: Se soluciona el SyntaxError eliminando la lógica de manejo de errores conflictiva con 'return'.
 import streamlit as st
 from PIL import Image
 import fitz  # PyMuPDF
@@ -754,8 +754,10 @@ if st.session_state.get("authentication_status"):
             exam_data = st.session_state.current_exam
             exam = exam_data.get('preguntas', [])
             
-            if not exam:
-                st.error("El mazo de preguntas está vacío o corrupto.")
+            # --- CORRECCIÓN FINAL ---
+            # Si el mazo está vacío o corrupto, mostramos el error y detenemos la ejecución con st.stop()
+            if not exam or not isinstance(exam, list) or len(exam) == 0:
+                st.error("El mazo de preguntas está vacío o corrupto. Por favor, elimínalo y vuelve a generar uno.")
                 
                 if st.button("Eliminar mazo vacío", key="del_empty"):
                      if delete_user_deck(username, exam_data.get('deck_name', '')):
