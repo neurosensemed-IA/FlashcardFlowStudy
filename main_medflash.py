@@ -907,7 +907,6 @@ if st.session_state.get("authentication_status"):
                 sel_deck_name = deck_name_to_id.get(sel_display)
             
             with c2:
-                # --- BOTÓN INICIAR ESTUDIO ---
                 if st.button("Iniciar Estudio 🚀", type="primary", use_container_width=True):
                     if sel_deck_name: 
                         restart_exam()
@@ -917,18 +916,12 @@ if st.session_state.get("authentication_status"):
                         st.session_state.current_exam['deck_name'] = sel_deck_name 
                         st.session_state.page = "Estudiar"
                         st.rerun()
-                
-                # --- BOTÓN ELIMINAR MAZO (Ahora con color de clase) ---
-                # Usamos la clase CSS 'delete-button' para hacerlo rojo y visible
-                st.markdown('<div class="delete-button">', unsafe_allow_html=True)
-                if st.button("🗑️ Eliminar Mazo", use_container_width=True, key="delete_deck_btn"):
+                if st.button("🗑️ Eliminar Mazo", use_container_width=True):
                     if sel_deck_name: 
                         if delete_user_deck(username, sel_deck_name):
                             del st.session_state.flashcard_library[sel_deck_name]
                             st.success(f"Mazo '{sel_deck_name}' eliminado.")
                             st.rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
-
 
 # Manejo de errores de login (fuera del bloque principal)
 elif st.session_state.get("authentication_status") is False:
