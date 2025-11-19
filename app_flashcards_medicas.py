@@ -377,7 +377,7 @@ def update_user_level(username, passed_exam):
     if not db: return None, "Base de datos no disponible."
     try:
         doc_ref = db.collection('usuarios').document(username)
-        doc = doc_ref.get()
+        doc = doc.get()
         if not doc.exists: return None, "Usuario no encontrado."
         
         data = doc.to_dict()
@@ -774,8 +774,6 @@ if st.session_state.get("authentication_status"):
                      if delete_user_deck(username, exam_data.get('deck_name', '')):
                          st.session_state.page = "Mi Progreso"
                          st.rerun()
-                # st.stop() no se usa para evitar SyntaxError. Se deja que el if/else maneje el flujo.
-
             
             if is_valid_exam: # Solo ejecutamos la lógica del examen si hay preguntas válidas
                 idx = st.session_state.current_question_index
