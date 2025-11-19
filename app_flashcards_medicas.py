@@ -1,5 +1,5 @@
 # Código de la aplicación Med-Flash AI
-# CORRECCIÓN DEFINITIVA: Se soluciona el SyntaxError (Línea 720) y se mejora la robustez del JSON.
+# CORRECCIÓN FINAL: Se soluciona el SyntaxError de la línea 720 usando st.stop() en lugar de return.
 import streamlit as st
 from PIL import Image
 import fitz  # PyMuPDF
@@ -23,7 +23,7 @@ STOIC_QUOTES = [
     "“El obstáculo es el camino.” — Marco Aurelio",
     "“La dificultad es lo que despierta al genio.” — Séneca",
     "“No es que tengamos poco tiempo, sino que perdemos mucho.” — Séneca",
-    "“La excelencia es un hábito, no un acto.” — Aristóteles",
+    "“La excelencia es un hábito, no es un acto.” — Aristóteles",
     "“Un gramo de práctica vale más que una tonelada de teoría.”",
     "“El éxito es la suma de pequeños esfuerzos repetidos día tras día.” — Robert Collier"
 ]
@@ -712,7 +712,16 @@ if st.session_state.get("authentication_status"):
                         with st.spinner(f"🧠 Generando preguntas de {st.session_state.materia_actual}/{st.session_state.sistema_actual} para {st.session_state.user_level}..."):
                             response = gemini_model.generate_content(prompt_parts)
                             clean_response = response.text.strip().replace('```json', '').replace('```', '')
-                            preguntas_json_list = json.loads(clean_response) # Aquí puede fallar si la IA no devuelve JSON
+                            
+                            # CRÍTICO: La IA a veces devuelve texto antes o después. 
+                            # Buscamos la primera llave de apertura y la última de cierre para aislar el JSON.
+                            json_start = clean_response.find('[')
+                            json_end = clean_response.rfind(']')
+                            if json_start != -1 and json_end != -1:
+                                isolated_json = clean_response[json_start:json_end+1]
+                                preguntas_json_list = json.loads(isolated_json) 
+                            else:
+                                raise json.JSONDecodeError("JSON no encontrado o mal formado.", clean_response, 0)
                             
                             # VALIDACIÓN CRÍTICA DEL JSON
                             if not isinstance(preguntas_json_list, list) or not preguntas_json_list:
@@ -745,14 +754,12 @@ if st.session_state.get("authentication_status"):
             
             if not exam:
                 st.error("El mazo de preguntas está vacío o corrupto.")
-                # El SyntaxError estaba aquí (Línea 720 antes de esta corrección)
-                # La corrección era eliminar o mover el 'return'
                 
                 if st.button("Eliminar mazo vacío", key="del_empty"):
                      if delete_user_deck(username, exam_data.get('deck_name', '')):
                          st.session_state.page = "Mi Progreso"
                          st.rerun()
-                return
+                st.stop() # Detiene la ejecución aquí
 
             idx = st.session_state.current_question_index
             
