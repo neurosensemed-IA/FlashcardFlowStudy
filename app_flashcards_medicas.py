@@ -171,6 +171,18 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# --- Listas de Materias y Sistemas (Nuevas) ---
+MATERIAS = [
+    "Seleccionar Materia", "Anatomía", "Fisiología", "Bioquímica", "Histología", 
+    "Embriología", "Microbiología", "Parasitología", "Farmacología", 
+    "Patología", "Semiología", "Medicina Interna", "Pediatría", "Neurología", "Cirugía", "Ginecología/Obstetricia", "Otra"
+]
+
+SISTEMAS = [
+    "Seleccionar Sistema", "General", "Cardiovascular", "Respiratorio", "Nervioso Central", 
+    "Nervioso Periférico", "Digestivo", "Renal (Urinario)", "Musculoesquelético", 
+    "Endocrino", "Hematológico", "Inmunológico", "Tegumentario", "Reproductivo", "Otro"
+]
 # --- Funciones de Extracción ---
 def extraer_texto_pdf(file_stream):
     try:
@@ -214,6 +226,10 @@ if "authentication_status" not in st.session_state:
     st.session_state.authentication_status = None
 if "user_level" not in st.session_state:
     st.session_state.user_level = "Nivel 1 (Novato)"
+if "materia_actual" not in st.session_state: # Nuevo
+    st.session_state.materia_actual = MATERIAS[0]
+if "sistema_actual" not in st.session_state: # Nuevo
+    st.session_state.sistema_actual = SISTEMAS[0]
 
 # --- Funciones de API (Gemini y Firestore) ---
 
@@ -367,7 +383,8 @@ def get_user_decks(username):
         decks = decks_ref.stream()
         user_decks = {}
         for deck in decks:
-            user_decks[deck.id] = deck.to_dict().get('preguntas', []) 
+            user_decks[deck.id] = deck.to_dict()
+            # Guardamos el diccionario completo, no solo las preguntas
         return user_decks
     except Exception as e:
         st.error(f"Error al cargar mazos: {e}")
@@ -506,37 +523,52 @@ if st.session_state["authentication_status"]:
         if st.button("4. Estudiar y Progreso", use_container_width=True):
             st.session_state.page = "Mi Progreso"
 
-    # 1. Carga de Contenido
+    # 1. Carga de Contenido (MOVIMOS CATEGORIZACIÓN AQUÍ)
     if st.session_state.page == "Cargar Contenido":
-        st.header("1. Carga tu Contenido de Estudio 📚")
-        st.markdown("Sube tus apuntes, resúmenes o presentaciones. Los analizaremos por ti.")
+        st.header("1. Define y Carga tu Contenido 📚")
+        st.markdown("Primero, define la categoría médica para que la IA se enfoque correctamente.")
         
-        uploaded_file = st.file_uploader(
-            "Sube archivos .pdf, .pptx, .txt, .md",
-            type=["pdf", "pptx", "txt", "md"],
-            accept_multiple_files=False,
-        )
-        
-        if uploaded_file:
-            file_type = uploaded_file.type
-            texto_extraido = ""
+        col1, col2 = st.columns(2)
+        with col1:
+            # SELECCIÓN DE MATERIA (Guardada en session_state)
+            st.session_state.materia_actual = st.selectbox("Materia:", options=MATERIAS, key="input_materia")
+        with col2:
+            # SELECCIÓN DE SISTEMA (Guardada en session_state)
+            st.session_state.sistema_actual = st.selectbox("Sistema/Órgano:", options=SISTEMAS, key="input_sistema")
+
+        st.markdown("---")
+
+        if st.session_state.materia_actual == MATERIAS[0] or st.session_state.sistema_actual == SISTEMAS[0]:
+            st.warning("Por favor, selecciona una Materia y un Sistema antes de subir un archivo.")
+        else:
+            st.success(f"Contexto de Estudio: **{st.session_state.materia_actual}** / **{st.session_state.sistema_actual}**")
+
+            uploaded_file = st.file_uploader(
+                "Sube archivos .pdf, .pptx, .txt, .md para analizar",
+                type=["pdf", "pptx", "txt", "md"],
+                accept_multiple_files=False,
+            )
             
-            with st.spinner(f"Procesando {uploaded_file.name}..."):
-                try:
-                    if file_type == "application/pdf":
-                        texto_extraido = extraer_texto_pdf(uploaded_file)
-                    elif file_type == "application/vnd.openxmlformats-officedocument.presentationml.presentation":
-                        texto_extraido = extraer_texto_pptx(uploaded_file)
-                    elif file_type in ["text/plain", "text/markdown"]:
-                        texto_extraido = uploaded_file.read().decode("utf-8")
-                    
-                    st.session_state.extracted_content = texto_extraido
-                    st.success("¡Archivo procesado con éxito!")
-                    st.info(f"Se extrajeron {len(texto_extraido)} caracteres.")
-                    
-                except Exception as e:
-                    st.error(f"Ocurrió un error al procesar el archivo: {e}")
-                    st.session_state.extracted_content = None
+            if uploaded_file:
+                file_type = uploaded_file.type
+                texto_extraido = ""
+                
+                with st.spinner(f"Procesando {uploaded_file.name}..."):
+                    try:
+                        if file_type == "application/pdf":
+                            texto_extraido = extraer_texto_pdf(uploaded_file)
+                        elif file_type == "application/vnd.openxmlformats-officedocument.presentationml.presentation":
+                            texto_extraido = extraer_texto_pptx(uploaded_file)
+                        elif file_type in ["text/plain", "text/markdown"]:
+                            texto_extraido = uploaded_file.read().decode("utf-8")
+                        
+                        st.session_state.extracted_content = texto_extraido
+                        st.success("¡Archivo procesado con éxito!")
+                        st.info(f"Se extrajeron {len(texto_extraido)} caracteres. Continúa con 'Verificación IA'.")
+                        
+                    except Exception as e:
+                        st.error(f"Ocurrió un error al procesar el archivo: {e}")
+                        st.session_state.extracted_content = None
 
         if st.session_state.extracted_content:
             st.subheader("Texto Extraído (Primeros 1000 caracteres):")
@@ -548,14 +580,17 @@ if st.session_state["authentication_status"]:
         
         if not st.session_state.extracted_content:
             st.warning("Por favor, carga un archivo primero en la pestaña 'Cargar Contenido'.")
+        elif st.session_state.materia_actual == MATERIAS[0]:
+             st.warning("Por favor, define la Materia y el Sistema en la pestaña 'Cargar Contenido'.")
         else:
-            st.subheader("Contenido a Verificar:")
-            st.text_area("", st.session_state.extracted_content, height=300, key="verif_content")
+            st.subheader(f"Contexto: **{st.session_state.materia_actual}** / **{st.session_state.sistema_actual}**")
+            st.text_area("Contenido a Verificar:", st.session_state.extracted_content, height=300, key="verif_content")
             
             if st.button("🔬 Analizar Precisión"):
                 try:
                     prompt_parts = [
-                        "Rol: Eres un profesor de medicina y revisor científico experto.",
+                        f"Rol: Eres un profesor de medicina en {st.session_state.materia_actual} y revisor científico experto.",
+                        f"Contexto: {st.session_state.materia_actual} aplicada al sistema {st.session_state.sistema_actual}.",
                         f"Texto a revisar:\n---\n{st.session_state.extracted_content}\n---\n",
                         "Tu Tarea: Analiza el texto y evalúa su precisión científica, coherencia y claridad.",
                         "Marca los conceptos clave con un color/ícono:",
@@ -578,31 +613,20 @@ if st.session_state["authentication_status"]:
     elif st.session_state.page == "Generar Examen":
         st.header("3. Generar Mazo de Flashcards 🎓")
         st.markdown(f"**Nivel actual del estudiante:** {st.session_state.user_level}")
-        st.info("La IA adaptará la complejidad de las preguntas a tu nivel actual y al tema seleccionado.")
-
+        
         if not st.session_state.extracted_content:
-            st.warning("Por favor, carga un archivo primero para generar preguntas sobre él.")
+            st.warning("Por favor, carga un archivo primero en la pestaña 'Cargar Contenido'.")
+        elif st.session_state.materia_actual == MATERIAS[0]:
+             st.warning("Por favor, define la Materia y el Sistema en la pestaña 'Cargar Contenido'.")
         else:
+            st.info(f"El examen será de **{st.session_state.materia_actual}** / **{st.session_state.sistema_actual}** y se adaptará a tu nivel.")
+
             deck_name = st.text_input("Nombre del Mazo (ej. Repaso Parcial 1):")
-            
-            st.markdown("---")
             
             col1, col2 = st.columns(2)
             with col1:
-                # SELECCIÓN DE MATERIA
-                materia = st.selectbox("Materia:", 
-                    ["Anatomía", "Fisiología", "Patología", "Farmacología", "Semiología", 
-                     "Medicina Interna", "Pediatría", "Neurología", "Cirugía", "Morfología", "Otra"])
-            with col2:
-                # SELECCIÓN DE SISTEMA
-                sistema = st.selectbox("Sistema/Órgano:", 
-                    ["General", "Cardiovascular", "Respiratorio", "Nervioso", "Digestivo", 
-                     "Renal", "Musculoesquelético", "Endocrino", "Hematológico", "Inmunológico", "Otro"])
-
-            col3, col4 = st.columns(2)
-            with col3:
                 st.write(f"**Dificultad:** Adaptativa ({st.session_state.user_level})")
-            with col4:
+            with col2:
                 st.session_state.num_questions = st.number_input("Número de Preguntas:", min_value=1, max_value=10, value=5)
             
             if st.button("🚀 Generar Examen Adaptativo"):
@@ -623,23 +647,23 @@ if st.session_state["authentication_status"]:
                             level_instruction = f"El estudiante está en {st.session_state.user_level}. Genera preguntas de dificultad INTERMEDIA/ALTA acorde a su progreso."
 
                         prompt_parts = [
-                            f"Rol: Eres un profesor de medicina experto en {materia} y tutor adaptativo.",
-                            f"Contexto Médico: {materia} aplicada al sistema {sistema}.",
+                            f"Rol: Eres un profesor de medicina experto en {st.session_state.materia_actual} y tutor adaptativo.",
+                            f"Contexto Médico: {st.session_state.materia_actual} aplicada al sistema {st.session_state.sistema_actual}.",
                             f"Instrucción de Nivel: {level_instruction}",
                             f"Texto base:\n---\n{st.session_state.extracted_content}\n---\n",
-                            f"Genera {st.session_state.num_questions} preguntas de opción múltiple enfocadas en {materia}/{sistema}.",
+                            f"Genera {st.session_state.num_questions} preguntas de opción múltiple enfocadas en {st.session_state.materia_actual}/{st.session_state.sistema_actual}.",
                             "Formato de Respuesta: OBLIGATORIAMENTE una LISTA de objetos JSON válidos:",
                             """[{"pregunta": "...", "opciones": {"A": "...", "B": "...", "C": "...", "D": "..."}, "respuesta_correcta": "B", "explicacion": "..."}]"""
                         ]
 
-                        with st.spinner(f"🧠 Generando preguntas de {materia}/{sistema} para {st.session_state.user_level}..."):
+                        with st.spinner(f"🧠 Generando preguntas de {st.session_state.materia_actual}/{st.session_state.sistema_actual} para {st.session_state.user_level}..."):
                             response = gemini_model.generate_content(prompt_parts)
                             clean_response = response.text.strip().replace('```json', '').replace('```', '')
                             preguntas_json_list = json.loads(clean_response)
                             
-                            if save_user_deck(username, deck_name, preguntas_json_list, materia, sistema):
+                            if save_user_deck(username, deck_name, preguntas_json_list, st.session_state.materia_actual, st.session_state.sistema_actual):
                                 st.session_state.flashcard_library[deck_name] = preguntas_json_list
-                                st.success(f"¡Mazo '{deck_name}' ({materia}) creado y guardado!")
+                                st.success(f"¡Mazo '{deck_name}' ({st.session_state.materia_actual}) creado y guardado!")
                                 st.balloons()
                             else:
                                 st.error("Error guardando en base de datos.")
@@ -655,7 +679,9 @@ if st.session_state["authentication_status"]:
             st.rerun()
 
         if st.session_state.current_exam:
-            exam = st.session_state.current_exam
+            exam_data = st.session_state.current_exam # El diccionario completo del mazo
+            exam = exam_data.get('preguntas', []) # Solo las preguntas
+            
             idx = st.session_state.current_question_index
             
             if idx >= len(exam):
@@ -754,21 +780,32 @@ if st.session_state["authentication_status"]:
         if not st.session_state.flashcard_library:
             st.info("No hay mazos guardados. Ve a 'Generar Examen'.")
         else:
+            
+            # Mostrar la lista de mazos con sus etiquetas
+            deck_options = []
+            for name, data in st.session_state.flashcard_library.items():
+                materia = data.get('materia', 'N/A')
+                sistema = data.get('sistema', 'N/A')
+                deck_options.append(f"[{materia}/{sistema}] - {name}")
+
             c1, c2 = st.columns([2, 1])
             with c1:
-                d_names = list(st.session_state.flashcard_library.keys())
-                sel_deck = st.selectbox("Elige mazo:", options=d_names)
+                sel_display = st.selectbox("Elige mazo:", options=deck_options)
+                # Extraer el nombre real del mazo (lo que está después de ' - ')
+                sel_deck_name = sel_display.split(' - ')[-1] if ' - ' in sel_display else sel_display
+            
             with c2:
                 if st.button("Iniciar 🚀", type="primary"):
-                    if sel_deck: 
+                    if sel_deck_name: 
                         restart_exam()
-                        st.session_state.current_exam = st.session_state.flashcard_library[sel_deck]
+                        # Cargamos el diccionario completo del mazo (que incluye preguntas, materia, sistema)
+                        st.session_state.current_exam = st.session_state.flashcard_library[sel_deck_name]
                         st.session_state.page = "Estudiar"
                         st.rerun()
                 if st.button("🗑️ Eliminar"):
-                    if sel_deck: 
-                        if delete_user_deck(username, sel_deck):
-                            del st.session_state.flashcard_library[sel_deck]
+                    if sel_deck_name: 
+                        if delete_user_deck(username, sel_deck_name):
+                            del st.session_state.flashcard_library[sel_deck_name]
                             st.success("Eliminado.")
                             st.rerun()
 
