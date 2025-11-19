@@ -764,15 +764,20 @@ if st.session_state.get("authentication_status"):
             exam = exam_data.get('preguntas', [])
             
             # --- CORRECCIÓN FINAL (Evitamos el return problemático) ---
-            # Si el mazo está vacío o corrupto, mostramos el error y detenemos la ejecución con un bloque 'if'
-            if not exam or not isinstance(exam, list) or len(exam) == 0:
+            # Verificación del mazo
+            is_valid_exam = exam and isinstance(exam, list) and len(exam) > 0
+
+            if not is_valid_exam:
                 st.error("El mazo de preguntas está vacío o corrupto. Por favor, elimínalo y vuelve a generar uno.")
                 
                 if st.button("Eliminar mazo vacío", key="del_empty"):
                      if delete_user_deck(username, exam_data.get('deck_name', '')):
                          st.session_state.page = "Mi Progreso"
                          st.rerun()
-            else: # Solo ejecutamos la lógica del examen si hay preguntas válidas
+                # st.stop() no se usa para evitar SyntaxError. Se deja que el if/else maneje el flujo.
+
+            
+            if is_valid_exam: # Solo ejecutamos la lógica del examen si hay preguntas válidas
                 idx = st.session_state.current_question_index
                 
                 if idx >= len(exam):
