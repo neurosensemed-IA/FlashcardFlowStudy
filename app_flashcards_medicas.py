@@ -1,3 +1,4 @@
+# Código de la aplicación Med-Flash AI
 import streamlit as st
 from PIL import Image
 import fitz  # PyMuPDF
@@ -25,6 +26,35 @@ STOIC_QUOTES = [
     "“Un gramo de práctica vale más que una tonelada de teoría.”",
     "“El éxito es la suma de pequeños esfuerzos repetidos día tras día.” — Robert Collier"
 ]
+
+# --- VÍNCULOS VISUALES DINÁMICOS (Para iconos y colores) ---
+SYSTEM_VISUALS = {
+    "Cardiovascular": {"icon": "❤️", "color": "#FF5757"},  # Rojo suave
+    "Respiratorio": {"icon": "🫁", "color": "#46B9C7"},   # Azul cian
+    "Nervioso Central": {"icon": "🧠", "color": "#A67CEF"}, # Púrpura
+    "Nervioso Periférico": {"icon": "⚡", "color": "#FFD700"}, # Amarillo dorado
+    "Digestivo": {"icon": "🍔", "color": "#FFB347"},      # Naranja
+    "Renal (Urinario)": {"icon": "💧", "color": "#5C94FF"},    # Azul
+    "Musculoesquelético": {"icon": "💪", "color": "#90EE90"},  # Verde claro
+    "Endocrino": {"icon": "🧬", "color": "#FF69B4"},      # Rosa fuerte
+    "Hematológico": {"icon": "🩸", "color": "#DC143C"},   # Rojo oscuro
+    "Inmunológico": {"icon": "🛡️", "color": "#1E90FF"},   # Azul brillante
+    "Reproductivo": {"icon": "🤰", "color": "#F5A6C1"},   # Rosa
+    "General": {"icon": "📚", "color": "#E0E0E0"},        # Gris
+    "Otro": {"icon": "❓", "color": "#4A4A4A"},           # Gris oscuro
+    "Seleccionar Sistema": {"icon": "🩺", "color": "#F5A6C1"}, # Rosa principal
+}
+
+
+# --- Listas de Materias y Sistemas ---
+MATERIAS = [
+    "Seleccionar Materia", "Anatomía", "Fisiología", "Bioquímica", "Histología", 
+    "Embriología", "Microbiología", "Parasitología", "Farmacología", 
+    "Patología", "Semiología", "Medicina Interna", "Pediatría", "Neurología", "Cirugía", "Ginecología/Obstetricia", "Otra"
+]
+
+SISTEMAS = list(SYSTEM_VISUALS.keys()) # Usar las claves del diccionario VISUALS
+
 
 # --- Configuración de la Página ---
 st.set_page_config(
@@ -151,38 +181,31 @@ st.markdown("""
         color: #F0F0F0;
     }
 
-    /* Contenedor de "Doodle" */
+    /* Contenedor de "Doodle" - AHORA CON COLOR DINÁMICO */
     .doodle-container {
         width: 100%;
         height: 150px;
-        background-color: var(--primary-color);
+        background-color: #2F2F2F; /* Fondo oscuro fijo */
         border-radius: 12px;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
         margin-bottom: 20px;
         padding: 10px;
+        border: 4px solid var(--system-color, #F5A6C1); /* Color de sistema por defecto */
     }
-    .doodle-container svg {
-        max-width: 80%;
-        max-height: 80%;
-        fill: var(--text-color); 
+    .doodle-container .system-icon {
+        font-size: 4rem;
+        margin-bottom: 5px;
+    }
+    .doodle-container .system-text {
+        color: var(--system-color, #F5A6C1); /* Color de sistema por defecto */
+        font-weight: bold;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Listas de Materias y Sistemas (Nuevas) ---
-MATERIAS = [
-    "Seleccionar Materia", "Anatomía", "Fisiología", "Bioquímica", "Histología", 
-    "Embriología", "Microbiología", "Parasitología", "Farmacología", 
-    "Patología", "Semiología", "Medicina Interna", "Pediatría", "Neurología", "Cirugía", "Ginecología/Obstetricia", "Otra"
-]
-
-SISTEMAS = [
-    "Seleccionar Sistema", "General", "Cardiovascular", "Respiratorio", "Nervioso Central", 
-    "Nervioso Periférico", "Digestivo", "Renal (Urinario)", "Musculoesquelético", 
-    "Endocrino", "Hematológico", "Inmunológico", "Tegumentario", "Reproductivo", "Otro"
-]
 # --- Funciones de Extracción ---
 def extraer_texto_pdf(file_stream):
     try:
@@ -207,6 +230,22 @@ def extraer_texto_pptx(file_stream):
     except Exception as e:
         return f"Error al procesar PPTX: {e}"
 
+# --- Funciones de Lógica de Estado (Arreglo del NameError) ---
+
+def go_to_next_question():
+    """Avanza a la siguiente pregunta y resetea el estado."""
+    st.session_state.current_question_index += 1
+    st.session_state.user_answer = None
+    st.session_state.show_explanation = False
+
+def restart_exam():
+    """Reinicia el examen limpiando el estado."""
+    st.session_state.current_exam = None
+    st.session_state.current_question_index = 0
+    st.session_state.user_answer = None
+    st.session_state.show_explanation = False
+    st.session_state.exam_results = []
+    
 # --- Estado de Sesión ---
 if 'page' not in st.session_state:
     st.session_state.page = "Cargar Contenido"
@@ -226,9 +265,9 @@ if "authentication_status" not in st.session_state:
     st.session_state.authentication_status = None
 if "user_level" not in st.session_state:
     st.session_state.user_level = "Nivel 1 (Novato)"
-if "materia_actual" not in st.session_state: # Nuevo
+if "materia_actual" not in st.session_state:
     st.session_state.materia_actual = MATERIAS[0]
-if "sistema_actual" not in st.session_state: # Nuevo
+if "sistema_actual" not in st.session_state:
     st.session_state.sistema_actual = SISTEMAS[0]
 
 # --- Funciones de API (Gemini y Firestore) ---
@@ -352,8 +391,7 @@ def update_user_level(username, passed_exam):
         
         if passed_exam:
             current_xp += 10
-            # Subir nivel si tiene suficiente XP (lógica simple por ahora)
-            # O simplemente subir si pasa el examen con nota alta
+            # Subir nivel si pasa el examen con nota alta
             try:
                 current_idx = levels_order.index(current_level)
                 if current_idx < len(levels_order) - 1:
@@ -384,7 +422,6 @@ def get_user_decks(username):
         user_decks = {}
         for deck in decks:
             user_decks[deck.id] = deck.to_dict()
-            # Guardamos el diccionario completo, no solo las preguntas
         return user_decks
     except Exception as e:
         st.error(f"Error al cargar mazos: {e}")
@@ -490,6 +527,15 @@ if st.session_state["authentication_status"]:
         st.session_state.user_xp = xp
         st.session_state.flashcard_library = get_user_decks(username)
         st.session_state.last_user = username
+        # Reiniciar el estado del examen al cambiar de usuario
+        restart_exam()
+
+    # Obtener visuales del sistema actual
+    current_system = st.session_state.sistema_actual
+    visuals = SYSTEM_VISUALS.get(current_system, SYSTEM_VISUALS["Seleccionar Sistema"])
+    system_icon = visuals["icon"]
+    system_color = visuals["color"]
+
 
     # --- BARRA LATERAL ---
     with st.sidebar:
@@ -500,17 +546,15 @@ if st.session_state["authentication_status"]:
         authenticator.logout('Cerrar Sesión', 'sidebar')
         st.markdown("---")
         
+        # --- NUEVO CONTENEDOR VISUAL CON ICONO DINÁMICO ---
         st.markdown(f"""
-        <div class="doodle-container">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19 3H5C3.89543 3 3 3.89543 3 5V19C3 20.1046 3.89543 21 5 21H19C20.1046 21 21 20.1046 21 19V5C21 3.89543 20.1046 3 19 3ZM19 5V19H5V5H19Z"></path>
-                <path d="M17 7H7V17H17V7Z" fill="var(--primary-color)"></path>
-                <path d="M12 8C10.6667 8 9.33333 9.33333 8 10C9.33333 10.6667 10.6667 12 12 12C13.3333 12 14.6667 10.6667 16 10C14.6667 9.33333 13.3333 8 12 8Z" fill="var(--text-color)"></path>
-                <path d="M12 13C10.6667 13 9.33333 14.3333 8 15C9.33333 15.6667 10.6667 17 12 17C13.3333 17 14.6667 15.6667 16 15C14.6667 14.3333 13.3333 13 12 13Z" fill="var(--text-color)"></path>
-                <path d="M12 10.5C11.1716 10.5 10.5 11.1716 10.5 12C10.5 12.8284 11.1716 13.5 12 13.5C12.8284 13.5 13.5 12.8284 13.5 12C13.5 11.1716 12.8284 10.5 12 10.5Z" fill="var(--primary-color)"></path>
-            </svg>
+        <div class="doodle-container" style="--system-color: {system_color};">
+            <span class="system-icon">{system_icon}</span>
+            <span class="system-text">{current_system}</span>
+            <span class="system-text">({st.session_state.materia_actual})</span>
         </div>
         """, unsafe_allow_html=True)
+        # --- FIN CONTENEDOR VISUAL ---
         
         st.markdown("---")
         
@@ -542,33 +586,36 @@ if st.session_state["authentication_status"]:
             st.warning("Por favor, selecciona una Materia y un Sistema antes de subir un archivo.")
         else:
             st.success(f"Contexto de Estudio: **{st.session_state.materia_actual}** / **{st.session_state.sistema_actual}**")
-
+            
             uploaded_file = st.file_uploader(
-                "Sube archivos .pdf, .pptx, .txt, .md para analizar",
+                "Sube archivos .pdf, .pptx, .txt, .md",
                 type=["pdf", "pptx", "txt", "md"],
                 accept_multiple_files=False,
             )
             
-            if uploaded_file:
-                file_type = uploaded_file.type
-                texto_extraido = ""
-                
-                with st.spinner(f"Procesando {uploaded_file.name}..."):
-                    try:
-                        if file_type == "application/pdf":
-                            texto_extraido = extraer_texto_pdf(uploaded_file)
-                        elif file_type == "application/vnd.openxmlformats-officedocument.presentationml.presentation":
-                            texto_extraido = extraer_texto_pptx(uploaded_file)
-                        elif file_type in ["text/plain", "text/markdown"]:
-                            texto_extraido = uploaded_file.read().decode("utf-8")
-                        
-                        st.session_state.extracted_content = texto_extraido
-                        st.success("¡Archivo procesado con éxito!")
-                        st.info(f"Se extrajeron {len(texto_extraido)} caracteres. Continúa con 'Verificación IA'.")
-                        
-                    except Exception as e:
-                        st.error(f"Ocurrió un error al procesar el archivo: {e}")
-                        st.session_state.extracted_content = None
+            # --- NUEVO BOTÓN DE CARGA EXPLÍCITO ---
+            if st.button("⏫ Procesar y Extraer Texto"):
+                if uploaded_file:
+                    file_type = uploaded_file.type
+                    texto_extraido = ""
+                    
+                    with st.spinner(f"Procesando {uploaded_file.name}..."):
+                        try:
+                            if file_type == "application/pdf":
+                                texto_extraido = extraer_texto_pdf(uploaded_file)
+                            elif file_type == "application/vnd.openxmlformats-officedocument.presentationml.presentation":
+                                texto_extraido = extraer_texto_pptx(uploaded_file)
+                            elif file_type in ["text/plain", "text/markdown"]:
+                                texto_extraido = uploaded_file.read().decode("utf-8")
+                            
+                            st.session_state.extracted_content = texto_extraido
+                            st.success("¡Archivo procesado y texto extraído con éxito! Continúa con 'Verificación IA'.")
+                            
+                        except Exception as e:
+                            st.error(f"Ocurrió un error al procesar el archivo: {e}")
+                            st.session_state.extracted_content = None
+                else:
+                    st.warning("Por favor, primero selecciona un archivo para procesar.")
 
         if st.session_state.extracted_content:
             st.subheader("Texto Extraído (Primeros 1000 caracteres):")
