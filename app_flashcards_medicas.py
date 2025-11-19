@@ -14,6 +14,7 @@ import streamlit_authenticator as stauth
 import bcrypt
 import yaml
 from yaml.loader import SafeLoader
+import time
 
 # --- FRASES MOTIVACIONALES ---
 STOIC_QUOTES = [
@@ -209,20 +210,10 @@ if 'show_explanation' not in st.session_state:
     st.session_state.show_explanation = False
 if 'exam_results' not in st.session_state:
     st.session_state.exam_results = []
-# Authentication status inicializado por la librería, no lo sobreescribimos manualmente si ya existe
-
-# --- Funciones de Callback ---
-def go_to_next_question():
-    st.session_state.current_question_index += 1
-    st.session_state.user_answer = None
-    st.session_state.show_explanation = False
-
-def restart_exam():
-    st.session_state.current_exam = None
-    st.session_state.current_question_index = 0
-    st.session_state.user_answer = None
-    st.session_state.show_explanation = False
-    st.session_state.exam_results = []
+if "authentication_status" not in st.session_state:
+    st.session_state.authentication_status = None
+if "user_level" not in st.session_state:
+    st.session_state.user_level = "Nivel 1 (Novato)"
 
 # --- Funciones de API (Gemini y Firestore) ---
 
@@ -265,14 +256,115 @@ if api_key_disponible:
 
 # --- Funciones de Base de Datos (Firestore) ---
 
-def get_user_decks(username):
-    if not db or not username:
+def get_all_users_credentials():
+    """Obtiene todos los usuarios para configurar el autenticador."""
+    if not db: return {}
+    try:
+        users_ref = db.collection('usuarios')
+        docs = users_ref.stream()
+        usernames_dict = {}
+        for doc in docs:
+            data = doc.to_dict()
+            usernames_dict[doc.id] = {
+                'email': data.get('email', ''),
+                'name': data.get('name', doc.id),
+                'password': data.get('password', '')
+            }
+        if not usernames_dict: # Si no hay usuarios, creamos uno por defecto (admin)
+             # Hash de prueba para "123"
+             default_hash = bcrypt.hashpw("123".encode(), bcrypt.gensalt()).decode()
+             usernames_dict['drdavid'] = {'email': 'david@medflash.ai', 'name': 'Dr. David', 'password': default_hash}
+        
+        return {'usernames': usernames_dict}
+    except Exception as e:
+        st.error(f"Error cargando usuarios: {e}")
         return {}
+
+def register_new_user(name, email, username, password):
+    """Registra un nuevo estudiante en Firestore."""
+    if not db: return False
+    try:
+        # Verificar si ya existe
+        doc_ref = db.collection('usuarios').document(username)
+        if doc_ref.get().exists:
+            return "exists"
+        
+        # Hashear password
+        hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        
+        # Guardar datos iniciales (Nivel 1)
+        doc_ref.set({
+            'name': name,
+            'email': email,
+            'password': hashed_pw,
+            'level': "Nivel 1 (Novato)",
+            'xp': 0
+        })
+        return "success"
+    except Exception as e:
+        return str(e)
+
+def get_user_progress(username):
+    """Obtiene el nivel y XP del estudiante."""
+    if not db: return "Nivel 1 (Novato)", 0
+    try:
+        doc = db.collection('usuarios').document(username).get()
+        if doc.exists:
+            data = doc.to_dict()
+            return data.get('level', "Nivel 1 (Novato)"), data.get('xp', 0)
+    except:
+        pass
+    return "Nivel 1 (Novato)", 0
+
+def update_user_level(username, passed_exam):
+    """Actualiza el nivel del estudiante según su desempeño."""
+    if not db: return
+    try:
+        doc_ref = db.collection('usuarios').document(username)
+        doc = doc_ref.get()
+        if not doc.exists: return
+        
+        data = doc.to_dict()
+        current_level = data.get('level', "Nivel 1 (Novato)")
+        current_xp = data.get('xp', 0)
+        
+        # Lógica de niveles
+        levels_order = ["Nivel 1 (Novato)", "Nivel 2 (Estudiante)", "Nivel 3 (Interno)", "Nivel 4 (Residente)", "Nivel 5 (Especialista)"]
+        
+        new_level = current_level
+        msg = ""
+        
+        if passed_exam:
+            current_xp += 10
+            # Subir nivel si tiene suficiente XP (lógica simple por ahora)
+            # O simplemente subir si pasa el examen con nota alta
+            try:
+                current_idx = levels_order.index(current_level)
+                if current_idx < len(levels_order) - 1:
+                    new_level = levels_order[current_idx + 1]
+                    msg = f"¡Has subido de nivel! Ahora eres: {new_level} 🌟"
+            except:
+                pass
+        else:
+            # Si falla, se mantiene o baja XP
+             msg = "Sigue practicando para subir de nivel."
+
+        doc_ref.update({
+            'level': new_level,
+            'xp': current_xp
+        })
+        return new_level, msg
+
+    except Exception as e:
+        st.error(f"Error actualizando nivel: {e}")
+        return None, None
+
+def get_user_decks(username):
+    if not db or not username: return {}
     try:
         user_ref = db.collection('usuarios').document(username)
         decks_ref = user_ref.collection('mazos')
         decks = decks_ref.stream()
-        
         user_decks = {}
         for deck in decks:
             user_decks[deck.id] = deck.to_dict().get('preguntas', []) 
@@ -282,8 +374,7 @@ def get_user_decks(username):
         return {}
 
 def save_user_deck(username, deck_name, deck_content):
-    if not db or not username:
-        return False
+    if not db or not username: return False
     try:
         user_ref = db.collection('usuarios').document(username)
         deck_ref = user_ref.collection('mazos').document(deck_name)
@@ -294,8 +385,7 @@ def save_user_deck(username, deck_name, deck_content):
         return False
 
 def delete_user_deck(username, deck_name):
-    if not db or not username:
-        return False
+    if not db or not username: return False
     try:
         user_ref = db.collection('usuarios').document(username)
         deck_ref = user_ref.collection('mazos').document(deck_name)
@@ -306,44 +396,19 @@ def delete_user_deck(username, deck_name):
         return False
 
 # --- CONFIGURACIÓN DE AUTENTICACIÓN ---
+# Cargar usuarios desde Firestore
+credentials_data = get_all_users_credentials()
 
-# 1. Definir contraseñas en texto plano
-passwords_plain = ['123', '456']
-
-# 2. Generar hashes usando BCRYPT DIRECTAMENTE
-try:
-    hashed_passwords = [bcrypt.hashpw(p.encode(), bcrypt.gensalt()).decode() for p in passwords_plain]
-except Exception as e:
-    st.error(f"Error generando hashes: {e}")
-    hashed_passwords = []
-
-# 3. Configuración
 config = {
-    'credentials': {
-        'usernames': {
-            'drdavid': {
-                'email': 'david@medflash.ai',
-                'name': 'Dr. David',
-                'password': hashed_passwords[0] if len(hashed_passwords) > 0 else ""
-            },
-            'estudiante1': {
-                'email': 'est1@medflash.ai',
-                'name': 'Estudiante Uno',
-                'password': hashed_passwords[1] if len(hashed_passwords) > 1 else ""
-            }
-        }
-    },
+    'credentials': credentials_data,
     'cookie': {
         'expiry_days': 30,
         'key': 'medflash_auth_key_12345', 
         'name': 'medflash_auth_cookie'
     },
-    'preauthorized': {
-        'emails': ['david@medflash.ai', 'est1@medflash.ai'] 
-    }
+    'preauthorized': {'emails': []}
 }
 
-# 4. Inicializar el autenticador
 authenticator = stauth.Authenticate(
     config['credentials'],
     config['cookie']['name'],
@@ -352,29 +417,65 @@ authenticator = stauth.Authenticate(
     config['preauthorized']['emails']
 )
 
-# --- Renderizar el formulario de Login ---
-st.title("Med-Flash AI 🧬")
+# --- INTERFAZ PRINCIPAL ---
+if not st.session_state.get("authentication_status"):
+    st.title("Med-Flash AI 🧬")
+    
+    tab1, tab2 = st.tabs(["Iniciar Sesión", "Registrarse 📝"])
+    
+    with tab1:
+        authenticator.login('main')
+        
+    with tab2:
+        st.subheader("Crear nueva cuenta de estudiante")
+        with st.form("register_form"):
+            new_name = st.text_input("Nombre Completo")
+            new_email = st.text_input("Correo Electrónico")
+            new_user = st.text_input("Usuario")
+            new_pass = st.text_input("Contraseña", type="password")
+            new_pass2 = st.text_input("Repetir Contraseña", type="password")
+            submit_reg = st.form_submit_button("Registrarme")
+            
+            if submit_reg:
+                if new_pass != new_pass2:
+                    st.error("Las contraseñas no coinciden.")
+                elif len(new_pass) < 4:
+                    st.error("La contraseña es muy corta.")
+                elif not new_user or not new_name:
+                    st.error("Por favor completa todos los campos.")
+                else:
+                    res = register_new_user(new_name, new_email, new_user, new_pass)
+                    if res == "success":
+                        st.success("¡Registro exitoso! Por favor ve a la pestaña 'Iniciar Sesión'.")
+                        time.sleep(1)
+                        st.rerun()
+                    elif res == "exists":
+                        st.error("Ese usuario ya existe. Prueba con otro.")
+                    else:
+                        st.error(f"Error en el registro: {res}")
 
-# Login (CORRECCIÓN CRÍTICA: Sin desempaquetar variables)
-authenticator.login('main')
-
-# --- Lógica principal (POST-LOGIN) ---
+# --- APP LOGUEADA ---
 if st.session_state["authentication_status"]:
     
-    # Leer datos del usuario directamente desde st.session_state
-    # (La librería nueva los guarda ahí automáticamente)
-    username_actual = st.session_state["username"]
-    name_actual = st.session_state["name"]
+    # Datos del usuario actual
+    username = st.session_state["username"]
+    name = st.session_state["name"]
     
-    # Cargar biblioteca al inicio
-    st.session_state.flashcard_library = get_user_decks(username_actual)
+    # Cargar Nivel y Mazos
+    if "user_level" not in st.session_state or st.session_state.get("last_user") != username:
+        lvl, xp = get_user_progress(username)
+        st.session_state.user_level = lvl
+        st.session_state.user_xp = xp
+        st.session_state.flashcard_library = get_user_decks(username)
+        st.session_state.last_user = username
 
     # --- BARRA LATERAL ---
     with st.sidebar:
         st.title("Med-Flash AI 🧬")
-        st.markdown(f"Bienvenido, **{name_actual}**")
-        authenticator.logout('Cerrar Sesión', 'sidebar')
+        st.markdown(f"Hola, **{name}** 👋")
+        st.markdown(f"**Nivel:** {st.session_state.user_level}")
         
+        authenticator.logout('Cerrar Sesión', 'sidebar')
         st.markdown("---")
         
         st.markdown(f"""
@@ -399,18 +500,6 @@ if st.session_state["authentication_status"]:
             st.session_state.page = "Generar Examen"
         if st.button("4. Estudiar y Progreso", use_container_width=True):
             st.session_state.page = "Mi Progreso"
-            
-        st.markdown("---")
-        
-        if db:
-            st.success("Firestore DB conectada.")
-        else:
-            st.error("Error en conexión a Firestore.")
-            
-        if api_key_disponible:
-            st.success("API de Gemini conectada.")
-        else:
-            st.error("API Key de Google no configurada.")
 
     # 1. Carga de Contenido
     if st.session_state.page == "Cargar Contenido":
@@ -451,12 +540,9 @@ if st.session_state["authentication_status"]:
     # 2. Verificación Médica
     elif st.session_state.page == "Verificación IA":
         st.header("2. Verificación Médica con IA 🔬")
-        st.markdown("Analizamos la precisión científica de tu contenido.")
-
+        
         if not st.session_state.extracted_content:
             st.warning("Por favor, carga un archivo primero en la pestaña 'Cargar Contenido'.")
-        elif not api_key_disponible or not gemini_model:
-            st.warning("La API de Google no está configurada.")
         else:
             st.subheader("Contenido a Verificar:")
             st.text_area("", st.session_state.extracted_content, height=300, key="verif_content")
@@ -483,28 +569,27 @@ if st.session_state["authentication_status"]:
                 except Exception as e:
                     st.error(f"Error al conectar con Gemini: {e}")
 
-    # 3. Generador de Preguntas
+    # 3. Generador de Preguntas (ADAPTATIVO)
     elif st.session_state.page == "Generar Examen":
         st.header("3. Generar Mazo de Flashcards 🎓")
-        st.markdown("Crea un nuevo mazo de tarjetas de estudio basado en tu material.")
+        st.markdown(f"**Nivel actual del estudiante:** {st.session_state.user_level}")
+        st.info("La IA adaptará la complejidad de las preguntas a tu nivel actual.")
 
         if not st.session_state.extracted_content:
             st.warning("Por favor, carga un archivo primero para generar preguntas sobre él.")
-        elif not api_key_disponible or not gemini_model:
-            st.warning("La API de Google no está configurada.")
         else:
             deck_name = st.text_input("Nombre del Tema (ej. Fisiología Cardíaca - Ciclo):")
             st.markdown("---")
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.session_state.difficulty = st.selectbox("Nivel de Dificultad:", ["Automático (Adaptativo)", "Fácil", "Medio", "Difícil"])
+                st.write(f"**Dificultad sugerida:** {st.session_state.user_level}")
             with col2:
                 st.session_state.subject = st.selectbox("Tipo de Materia:", ["Materias Básicas", "Materias Clínicas"])
             with col3:
                 st.session_state.num_questions = st.number_input("Número de Preguntas:", min_value=1, max_value=10, value=5)
             
-            if st.button("🚀 Generar y Guardar Mazo"):
+            if st.button("🚀 Generar Examen Adaptativo"):
                 if not deck_name:
                     st.warning("Por favor, dale un nombre a tu mazo.")
                 elif deck_name in st.session_state.flashcard_library:
@@ -512,29 +597,39 @@ if st.session_state["authentication_status"]:
                 else:
                     restart_exam()
                     try:
+                        # PROMPT ADAPTATIVO
+                        level_instruction = ""
+                        if "Novato" in st.session_state.user_level or "Nivel 1" in st.session_state.user_level:
+                            level_instruction = "El estudiante es Nivel NOVATO. Genera preguntas de conceptos BÁSICOS, definiciones fundamentales y anatomía simple. Evita casos clínicos complejos. Sé didáctico."
+                        elif "Especialista" in st.session_state.user_level:
+                            level_instruction = "El estudiante es NIVEL ESPECIALISTA. Genera preguntas de alta complejidad, casos clínicos con matices, fisiopatología avanzada y toma de decisiones."
+                        else:
+                            level_instruction = f"El estudiante está en {st.session_state.user_level}. Genera preguntas de dificultad INTERMEDIA/ALTA acorde a su progreso."
+
                         prompt_parts = [
-                            "Rol: Eres un profesor de medicina experto en crear preguntas de examen tipo USMLE/MIR.",
-                            f"Contexto: Nivel {st.session_state.difficulty}, Materia {st.session_state.subject}.",
+                            "Rol: Eres un profesor de medicina experto y tutor adaptativo.",
+                            f"Instrucción de Nivel: {level_instruction}",
+                            f"Contexto: Materia {st.session_state.subject}.",
                             f"Texto base:\n---\n{st.session_state.extracted_content}\n---\n",
                             f"Genera {st.session_state.num_questions} preguntas de opción múltiple.",
-                            "Formato de Respuesta: OBLIGATORIAMENTE una LISTA de objetos JSON:",
+                            "Formato de Respuesta: OBLIGATORIAMENTE una LISTA de objetos JSON válidos:",
                             """[{"pregunta": "...", "opciones": {"A": "...", "B": "...", "C": "...", "D": "..."}, "respuesta_correcta": "B", "explicacion": "..."}]"""
                         ]
 
-                        with st.spinner(f"🧠 Generando {st.session_state.num_questions} preguntas..."):
+                        with st.spinner(f"🧠 Generando preguntas adaptadas para {st.session_state.user_level}..."):
                             response = gemini_model.generate_content(prompt_parts)
                             clean_response = response.text.strip().replace('```json', '').replace('```', '')
                             preguntas_json_list = json.loads(clean_response)
                             
-                            if save_user_deck(username_actual, deck_name, preguntas_json_list):
+                            if save_user_deck(username, deck_name, preguntas_json_list):
                                 st.session_state.flashcard_library[deck_name] = preguntas_json_list
-                                st.success(f"¡Mazo '{deck_name}' guardado!")
+                                st.success(f"¡Mazo '{deck_name}' creado y guardado!")
                                 st.balloons()
                             else:
-                                st.error("No se pudo guardar en la base de datos.")
+                                st.error("Error guardando en base de datos.")
 
                     except Exception as e:
-                        st.error(f"Error: {e}")
+                        st.error(f"Error generando examen: {e}")
 
     # 4. Estudiar y Progreso
     elif st.session_state.page == "Estudiar":
@@ -549,16 +644,29 @@ if st.session_state["authentication_status"]:
             
             if idx >= len(exam):
                 st.header("¡Examen Completado! 🥳")
-                selected_quote = random.choice(STOIC_QUOTES)
-                st.markdown(f"#### *{selected_quote}*")
-                st.markdown("---")
                 
                 correctas = sum(1 for r in st.session_state.exam_results if r['correcta'])
                 total = len(exam)
                 puntaje = (correctas / total) * 100 if total > 0 else 0
-
-                st.metric("Tu Puntaje:", f"{puntaje:.0f}%", f"{correctas} de {total} correctas")
                 
+                # Lógica de Actualización de Nivel
+                passed = puntaje >= 80
+                new_lvl, msg = update_user_level(username, passed)
+                if new_lvl:
+                    st.session_state.user_level = new_lvl
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Tu Puntaje:", f"{puntaje:.0f}%", f"{correctas}/{total} correctas")
+                with col2:
+                    if passed:
+                        st.success("¡Excelente desempeño! 🌟")
+                        if msg: st.markdown(f"### {msg}")
+                    elif puntaje < 40:
+                        st.warning("Te sugerimos repasar conceptos básicos antes de avanzar.")
+                    else:
+                        st.info("Buen intento. Sigue practicando para subir de nivel.")
+
                 labels = ['Correctas', 'Incorrectas']
                 values = [correctas, total - correctas]
                 colors = ['#28a745', '#dc3545'] 
@@ -581,6 +689,7 @@ if st.session_state["authentication_status"]:
                     st.rerun() 
             
             else:
+                # Mostrar pregunta
                 card = exam[idx]
                 st.subheader(f"Pregunta {idx + 1} de {len(exam)}")
                 st.markdown('<div class="flashcard">', unsafe_allow_html=True)
@@ -620,13 +729,14 @@ if st.session_state["authentication_status"]:
 
     elif st.session_state.page == "Mi Progreso":
         st.header("4. Estudiar y Progreso 🏆")
-        st.subheader(f"Mis Mazos ({name_actual})")
+        st.subheader(f"Mis Mazos ({name})")
+        st.caption(f"Nivel Actual: {st.session_state.user_level}")
         
         if not st.session_state.flashcard_library:
-            st.session_state.flashcard_library = get_user_decks(username_actual)
+            st.session_state.flashcard_library = get_user_decks(username)
 
         if not st.session_state.flashcard_library:
-            st.info("No hay mazos. Ve a 'Generar Examen'.")
+            st.info("No hay mazos guardados. Ve a 'Generar Examen'.")
         else:
             c1, c2 = st.columns([2, 1])
             with c1:
@@ -641,12 +751,13 @@ if st.session_state["authentication_status"]:
                         st.rerun()
                 if st.button("🗑️ Eliminar"):
                     if sel_deck: 
-                        if delete_user_deck(username_actual, sel_deck):
+                        if delete_user_deck(username, sel_deck):
                             del st.session_state.flashcard_library[sel_deck]
                             st.success("Eliminado.")
                             st.rerun()
 
+# Manejo de errores de login (fuera del bloque principal)
 elif st.session_state["authentication_status"] is False:
-    st.error('Usuario/contraseña incorrectos')
+    st.error('Usuario o contraseña incorrectos')
 elif st.session_state["authentication_status"] is None:
-    st.warning('Por favor, introduce tu usuario y contraseña')
+    pass # Esperando input en la pantalla de login
