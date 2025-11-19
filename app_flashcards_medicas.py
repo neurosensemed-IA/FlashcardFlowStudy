@@ -1,5 +1,5 @@
 # Código de la aplicación Med-Flash AI
-# CORRECCIÓN FINAL: Se soluciona el SyntaxError de la línea 720 usando st.stop() en lugar de return.
+# CORRECCIÓN FINAL: Eliminación del bloque de código conflictivo con 'return' para resolver el SyntaxError persistente.
 import streamlit as st
 from PIL import Image
 import fitz  # PyMuPDF
@@ -717,6 +717,8 @@ if st.session_state.get("authentication_status"):
                             # Buscamos la primera llave de apertura y la última de cierre para aislar el JSON.
                             json_start = clean_response.find('[')
                             json_end = clean_response.rfind(']')
+                            
+                            preguntas_json_list = None
                             if json_start != -1 and json_end != -1:
                                 isolated_json = clean_response[json_start:json_end+1]
                                 preguntas_json_list = json.loads(isolated_json) 
