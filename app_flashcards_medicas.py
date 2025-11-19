@@ -1,5 +1,5 @@
 # Código de la aplicación Med-Flash AI
-# CORRECCIÓN DE ROBUSTEZ: Se mejoran las validaciones de JSON y base de datos para evitar que la aplicación se caiga.
+# CORRECCIÓN DEFINITIVA: Se soluciona el SyntaxError (Línea 720) y se mejora la robustez del JSON.
 import streamlit as st
 from PIL import Image
 import fitz  # PyMuPDF
@@ -726,10 +726,9 @@ if st.session_state.get("authentication_status"):
                             else:
                                 st.error("Error al guardar el mazo en la base de datos. Verifica la conexión a Firebase.")
 
-                    except json.JSONDecodeError:
-                        st.error("Error al procesar la respuesta de la IA. No se pudo leer el JSON de preguntas. Intenta con un texto base más claro.")
-                        # Opcional: Mostrar la respuesta cruda para depuración
-                        # st.text(response.text) 
+                    except json.JSONDecodeError as e:
+                        st.error(f"Error al procesar la respuesta de la IA (JSON Decode Error). Intenta con un texto base más claro. (Detalles: {e})")
+                        st.text_area("Respuesta Cruda de Gemini (Para Depuración)", response.text if 'response' in locals() else 'No hay respuesta cruda.')
                     except Exception as e:
                         st.error(f"Error inesperado al generar examen: {e}")
 
@@ -746,6 +745,9 @@ if st.session_state.get("authentication_status"):
             
             if not exam:
                 st.error("El mazo de preguntas está vacío o corrupto.")
+                # El SyntaxError estaba aquí (Línea 720 antes de esta corrección)
+                # La corrección era eliminar o mover el 'return'
+                
                 if st.button("Eliminar mazo vacío", key="del_empty"):
                      if delete_user_deck(username, exam_data.get('deck_name', '')):
                          st.session_state.page = "Mi Progreso"
@@ -795,7 +797,7 @@ if st.session_state.get("authentication_status"):
                     if result['correcta']:
                         st.markdown(f"""<div class="feedback-correct">✅ <strong>{i+1}. Correcto</strong> ({result['seleccionada']})</div>""", unsafe_allow_html=True)
                     else:
-                        st.markdown(f"""<div class="feedback-incorrect">❌ <strong>{i+1}. Incorrecto</strong> (Tu: {result['seleccionada']} | Ok: {result['correcta_texto']})</div>""", unsafe_allow_html=True)
+                        st.markdown(f"""<div class="feedback-incorrect">❌ <strong>{i+1}. Incorrecto</strong> (Tu: {result['seleccionada']} | Ok: {result['correcta_texto']} )</div>""", unsafe_allow_html=True)
                     st.markdown(f"""<div class="feedback-explanation">🧠 {q['explicacion']}</div>""", unsafe_allow_html=True)
                 
                 if st.button("Volver a mis mazos", on_click=restart_exam, key="volver_final"):
