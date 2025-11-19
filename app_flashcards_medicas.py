@@ -373,12 +373,17 @@ def get_user_decks(username):
         st.error(f"Error al cargar mazos: {e}")
         return {}
 
-def save_user_deck(username, deck_name, deck_content):
+def save_user_deck(username, deck_name, deck_content, materia, sistema):
     if not db or not username: return False
     try:
         user_ref = db.collection('usuarios').document(username)
         deck_ref = user_ref.collection('mazos').document(deck_name)
-        deck_ref.set({'preguntas': deck_content}) 
+        deck_ref.set({
+            'preguntas': deck_content,
+            'materia': materia,
+            'sistema': sistema,
+            'creado': firestore.SERVER_TIMESTAMP
+        }) 
         return True
     except Exception as e:
         st.error(f"Error al guardar el mazo: {e}")
@@ -573,20 +578,31 @@ if st.session_state["authentication_status"]:
     elif st.session_state.page == "Generar Examen":
         st.header("3. Generar Mazo de Flashcards 🎓")
         st.markdown(f"**Nivel actual del estudiante:** {st.session_state.user_level}")
-        st.info("La IA adaptará la complejidad de las preguntas a tu nivel actual.")
+        st.info("La IA adaptará la complejidad de las preguntas a tu nivel actual y al tema seleccionado.")
 
         if not st.session_state.extracted_content:
             st.warning("Por favor, carga un archivo primero para generar preguntas sobre él.")
         else:
-            deck_name = st.text_input("Nombre del Tema (ej. Fisiología Cardíaca - Ciclo):")
+            deck_name = st.text_input("Nombre del Mazo (ej. Repaso Parcial 1):")
+            
             st.markdown("---")
             
-            col1, col2, col3 = st.columns(3)
+            col1, col2 = st.columns(2)
             with col1:
-                st.write(f"**Dificultad sugerida:** {st.session_state.user_level}")
+                # SELECCIÓN DE MATERIA
+                materia = st.selectbox("Materia:", 
+                    ["Anatomía", "Fisiología", "Patología", "Farmacología", "Semiología", 
+                     "Medicina Interna", "Pediatría", "Neurología", "Cirugía", "Morfología", "Otra"])
             with col2:
-                st.session_state.subject = st.selectbox("Tipo de Materia:", ["Materias Básicas", "Materias Clínicas"])
+                # SELECCIÓN DE SISTEMA
+                sistema = st.selectbox("Sistema/Órgano:", 
+                    ["General", "Cardiovascular", "Respiratorio", "Nervioso", "Digestivo", 
+                     "Renal", "Musculoesquelético", "Endocrino", "Hematológico", "Inmunológico", "Otro"])
+
+            col3, col4 = st.columns(2)
             with col3:
+                st.write(f"**Dificultad:** Adaptativa ({st.session_state.user_level})")
+            with col4:
                 st.session_state.num_questions = st.number_input("Número de Preguntas:", min_value=1, max_value=10, value=5)
             
             if st.button("🚀 Generar Examen Adaptativo"):
@@ -597,7 +613,7 @@ if st.session_state["authentication_status"]:
                 else:
                     restart_exam()
                     try:
-                        # PROMPT ADAPTATIVO
+                        # PROMPT ADAPTATIVO MEJORADO
                         level_instruction = ""
                         if "Novato" in st.session_state.user_level or "Nivel 1" in st.session_state.user_level:
                             level_instruction = "El estudiante es Nivel NOVATO. Genera preguntas de conceptos BÁSICOS, definiciones fundamentales y anatomía simple. Evita casos clínicos complejos. Sé didáctico."
@@ -607,23 +623,23 @@ if st.session_state["authentication_status"]:
                             level_instruction = f"El estudiante está en {st.session_state.user_level}. Genera preguntas de dificultad INTERMEDIA/ALTA acorde a su progreso."
 
                         prompt_parts = [
-                            "Rol: Eres un profesor de medicina experto y tutor adaptativo.",
+                            f"Rol: Eres un profesor de medicina experto en {materia} y tutor adaptativo.",
+                            f"Contexto Médico: {materia} aplicada al sistema {sistema}.",
                             f"Instrucción de Nivel: {level_instruction}",
-                            f"Contexto: Materia {st.session_state.subject}.",
                             f"Texto base:\n---\n{st.session_state.extracted_content}\n---\n",
-                            f"Genera {st.session_state.num_questions} preguntas de opción múltiple.",
+                            f"Genera {st.session_state.num_questions} preguntas de opción múltiple enfocadas en {materia}/{sistema}.",
                             "Formato de Respuesta: OBLIGATORIAMENTE una LISTA de objetos JSON válidos:",
                             """[{"pregunta": "...", "opciones": {"A": "...", "B": "...", "C": "...", "D": "..."}, "respuesta_correcta": "B", "explicacion": "..."}]"""
                         ]
 
-                        with st.spinner(f"🧠 Generando preguntas adaptadas para {st.session_state.user_level}..."):
+                        with st.spinner(f"🧠 Generando preguntas de {materia}/{sistema} para {st.session_state.user_level}..."):
                             response = gemini_model.generate_content(prompt_parts)
                             clean_response = response.text.strip().replace('```json', '').replace('```', '')
                             preguntas_json_list = json.loads(clean_response)
                             
-                            if save_user_deck(username, deck_name, preguntas_json_list):
+                            if save_user_deck(username, deck_name, preguntas_json_list, materia, sistema):
                                 st.session_state.flashcard_library[deck_name] = preguntas_json_list
-                                st.success(f"¡Mazo '{deck_name}' creado y guardado!")
+                                st.success(f"¡Mazo '{deck_name}' ({materia}) creado y guardado!")
                                 st.balloons()
                             else:
                                 st.error("Error guardando en base de datos.")
