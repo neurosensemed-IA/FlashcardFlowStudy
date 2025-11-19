@@ -1,5 +1,5 @@
 # Código de la aplicación Med-Flash AI
-# CORRECCIÓN FINAL: Se soluciona el SyntaxError eliminando la lógica de manejo de errores conflictiva con 'return'.
+# CORRECCIÓN FINAL: Eliminación del bloque de código conflictivo con 'return' para resolver el SyntaxError persistente.
 import streamlit as st
 from PIL import Image
 import fitz  # PyMuPDF
@@ -458,6 +458,15 @@ def delete_user_deck(username, deck_name):
         return False
 
 # --- CONFIGURACIÓN DE AUTENTICACIÓN ---
+
+# 1. Definir contraseñas en texto plano (solo para esta configuración)
+passwords_plain = ['123', '456']
+
+# 2. Generar hashes seguros (esto se ejecutará solo una vez en el servidor y se cacheará)
+# Nota: La sintaxis Hasher(passwords).generate() es la correcta para la versión instalada.
+hashed_passwords = stauth.utilities.Hasher(passwords_plain).generate()
+
+# 3. Crear el diccionario de configuración
 credentials_data = get_all_users_credentials()
 
 config = {
@@ -754,8 +763,8 @@ if st.session_state.get("authentication_status"):
             exam_data = st.session_state.current_exam
             exam = exam_data.get('preguntas', [])
             
-            # --- CORRECCIÓN FINAL ---
-            # Si el mazo está vacío o corrupto, mostramos el error y detenemos la ejecución con st.stop()
+            # --- CORRECCIÓN FINAL (Evitamos el return problemático) ---
+            # Si el mazo está vacío o corrupto, mostramos el error y detenemos la ejecución con un bloque 'if'
             if not exam or not isinstance(exam, list) or len(exam) == 0:
                 st.error("El mazo de preguntas está vacío o corrupto. Por favor, elimínalo y vuelve a generar uno.")
                 
@@ -763,96 +772,95 @@ if st.session_state.get("authentication_status"):
                      if delete_user_deck(username, exam_data.get('deck_name', '')):
                          st.session_state.page = "Mi Progreso"
                          st.rerun()
-                st.stop() # Detiene la ejecución aquí
-
-            idx = st.session_state.current_question_index
-            
-            if idx >= len(exam):
-                st.header("¡Examen Completado! 🥳")
+            else: # Solo ejecutamos la lógica del examen si hay preguntas válidas
+                idx = st.session_state.current_question_index
                 
-                correctas = sum(1 for r in st.session_state.exam_results if r['correcta'])
-                total = len(exam)
-                puntaje = (correctas / total) * 100 if total > 0 else 0
-                
-                selected_quote = random.choice(STOIC_QUOTES)
-                st.markdown(f"#### *{selected_quote}*")
-                st.markdown("---")
-                
-                new_lvl, msg = update_user_level(username, puntaje >= 80)
-                if new_lvl:
-                    st.session_state.user_level = new_lvl
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Tu Puntaje:", f"{puntaje:.0f}%", f"{correctas}/{total} correctas")
-                with col2:
-                    if puntaje >= 80:
-                        st.success("¡Excelente desempeño! 🌟")
-                        if msg: st.markdown(f"### {msg}")
-                    elif puntaje < 40:
-                        st.warning("Te sugerimos repasar conceptos básicos antes de avanzar.")
-                    else:
-                        st.info("Buen intento. Sigue practicando para subir de nivel.")
-
-                labels = ['Correctas', 'Incorrectas']
-                values = [correctas, total - correctas]
-                colors = ['#5cb85c', '#d9534f'] 
-
-                fig = go.Figure(data=[go.Pie(labels=labels, values=values, hole=.3, marker_colors=colors)])
-                fig.update_layout(title_text='Resumen', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#F0F0F0')
-                st.plotly_chart(fig, use_container_width=True)
-
-                st.subheader("Revisión Detallada:")
-                for i, result in enumerate(st.session_state.exam_results):
-                    q = exam[i]
-                    if result['correcta']:
-                        st.markdown(f"""<div class="feedback-correct">✅ <strong>{i+1}. Correcto</strong> ({result['seleccionada']})</div>""", unsafe_allow_html=True)
-                    else:
-                        st.markdown(f"""<div class="feedback-incorrect">❌ <strong>{i+1}. Incorrecto</strong> (Tu: {result['seleccionada']} | Ok: {result['correcta_texto']} )</div>""", unsafe_allow_html=True)
-                    st.markdown(f"""<div class="feedback-explanation">🧠 {q['explicacion']}</div>""", unsafe_allow_html=True)
-                
-                if st.button("Volver a mis mazos", on_click=restart_exam, key="volver_final"):
-                    st.session_state.page = "Mi Progreso"
-                    st.rerun() 
-            
-            else:
-                # Mostrar pregunta
-                card = exam[idx]
-                st.subheader(f"Pregunta {idx + 1} de {len(exam)}")
-                st.markdown('<div class="flashcard">', unsafe_allow_html=True)
-                st.markdown(f"<h5>{card['pregunta']}</h5>", unsafe_allow_html=True)
-                opciones = list(card["opciones"].values())
-                st.radio("Respuesta:", options=opciones, key=f"user_answer_{idx}", disabled=st.session_state.show_explanation)
-                st.markdown('</div>', unsafe_allow_html=True) 
-                
-                if not st.session_state.show_explanation:
-                    if st.button("Responder", type="primary"):
-                        sel = st.session_state.get(f"user_answer_{idx}") 
-                        if sel: 
-                            st.session_state.user_answer = sel 
-                            st.session_state.show_explanation = True
-                            
-                            correct_ltr = card["respuesta_correcta"]
-                            correct_txt = card["opciones"][correct_ltr]
-                            es_correcta = (sel == correct_txt)
-                            
-                            st.session_state.exam_results.append({
-                                'correcta': es_correcta,
-                                'seleccionada': sel,
-                                'correcta_texto': correct_txt
-                            })
-                            st.rerun() 
+                if idx >= len(exam):
+                    st.header("¡Examen Completado! 🥳")
+                    
+                    correctas = sum(1 for r in st.session_state.exam_results if r['correcta'])
+                    total = len(exam)
+                    puntaje = (correctas / total) * 100 if total > 0 else 0
+                    
+                    selected_quote = random.choice(STOIC_QUOTES)
+                    st.markdown(f"#### *{selected_quote}*")
+                    st.markdown("---")
+                    
+                    new_lvl, msg = update_user_level(username, puntaje >= 80)
+                    if new_lvl:
+                        st.session_state.user_level = new_lvl
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Tu Puntaje:", f"{puntaje:.0f}%", f"{correctas}/{total} correctas")
+                    with col2:
+                        if puntaje >= 80:
+                            st.success("¡Excelente desempeño! 🌟")
+                            if msg: st.markdown(f"### {msg}")
+                        elif puntaje < 40:
+                            st.warning("Te sugerimos repasar conceptos básicos antes de avanzar.")
                         else:
-                            st.warning("Selecciona una respuesta.")
+                            st.info("Buen intento. Sigue practicando para subir de nivel.")
+
+                    labels = ['Correctas', 'Incorrectas']
+                    values = [correctas, total - correctas]
+                    colors = ['#5cb85c', '#d9534f'] 
+
+                    fig = go.Figure(data=[go.Pie(labels=labels, values=values, hole=.3, marker_colors=colors)])
+                    fig.update_layout(title_text='Resumen', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#F0F0F0')
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    st.subheader("Revisión Detallada:")
+                    for i, result in enumerate(st.session_state.exam_results):
+                        q = exam[i]
+                        if result['correcta']:
+                            st.markdown(f"""<div class="feedback-correct">✅ <strong>{i+1}. Correcto</strong> ({result['seleccionada']})</div>""", unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"""<div class="feedback-incorrect">❌ <strong>{i+1}. Incorrecto</strong> (Tu: {result['seleccionada']} | Ok: {result['correcta_texto']} )</div>""", unsafe_allow_html=True)
+                        st.markdown(f"""<div class="feedback-explanation">🧠 {q['explicacion']}</div>""", unsafe_allow_html=True)
+                    
+                    if st.button("Volver a mis mazos", on_click=restart_exam, key="volver_final"):
+                        st.session_state.page = "Mi Progreso"
+                        st.rerun() 
                 
-                if st.session_state.show_explanation:
-                    res = st.session_state.exam_results[idx]
-                    if res['correcta']:
-                        st.markdown(f"""<div class="feedback-correct">✅ ¡Correcto!</div>""", unsafe_allow_html=True)
-                    else:
-                        st.markdown(f"""<div class="feedback-incorrect">❌ Incorrecto. La respuesta correcta era: {res['correcta_texto']}</div>""", unsafe_allow_html=True)
-                    st.markdown(f"""<div class="feedback-explanation">🧠 {card['explicacion']}</div>""", unsafe_allow_html=True)
-                    st.button("Siguiente ➡️", on_click=go_to_next_question, type="primary")
+                else:
+                    # Mostrar pregunta
+                    card = exam[idx]
+                    st.subheader(f"Pregunta {idx + 1} de {len(exam)}")
+                    st.markdown('<div class="flashcard">', unsafe_allow_html=True)
+                    st.markdown(f"<h5>{card['pregunta']}</h5>", unsafe_allow_html=True)
+                    opciones = list(card["opciones"].values())
+                    st.radio("Respuesta:", options=opciones, key=f"user_answer_{idx}", disabled=st.session_state.show_explanation)
+                    st.markdown('</div>', unsafe_allow_html=True) 
+                    
+                    if not st.session_state.show_explanation:
+                        if st.button("Responder", type="primary"):
+                            sel = st.session_state.get(f"user_answer_{idx}") 
+                            if sel: 
+                                st.session_state.user_answer = sel 
+                                st.session_state.show_explanation = True
+                                
+                                correct_ltr = card["respuesta_correcta"]
+                                correct_txt = card["opciones"][correct_ltr]
+                                es_correcta = (sel == correct_txt)
+                                
+                                st.session_state.exam_results.append({
+                                    'correcta': es_correcta,
+                                    'seleccionada': sel,
+                                    'correcta_texto': correct_txt
+                                })
+                                st.rerun() 
+                            else:
+                                st.warning("Selecciona una respuesta.")
+                    
+                    if st.session_state.show_explanation:
+                        res = st.session_state.exam_results[idx]
+                        if res['correcta']:
+                            st.markdown(f"""<div class="feedback-correct">✅ ¡Correcto!</div>""", unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"""<div class="feedback-incorrect">❌ Incorrecto. La respuesta correcta era: {res['correcta_texto']}</div>""", unsafe_allow_html=True)
+                        st.markdown(f"""<div class="feedback-explanation">🧠 {card['explicacion']}</div>""", unsafe_allow_html=True)
+                        st.button("Siguiente ➡️", on_click=go_to_next_question, type="primary")
 
     elif st.session_state.page == "Mi Progreso":
         st.header("4. Estudiar y Progreso 🏆")
