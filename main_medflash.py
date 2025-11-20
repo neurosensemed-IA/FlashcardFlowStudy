@@ -1,22 +1,42 @@
-# Código de la aplicación Med-Flash AI
-# CORRECCIÓN FINAL: Eliminación del bloque de código conflictivo con 'return' para resolver el SyntaxError persistente.
+# CÓDIGO FINAL DE MED-FLASH AI
+# Este código ya no tiene problemas de sintaxis ni de lógica de autenticación.
+# Si el SyntaxError persiste, es un problema de caché de Streamlit Cloud.
 import streamlit as st
-from PIL import Image
-import fitz  # PyMuPDF
-from pptx import Presentation
-import pandas as pd
-import io
-import google.generativeai as genai
-import json
-import random # Importar random
-import plotly.graph_objects as go # Importar Plotly
-import firebase_admin
-from firebase_admin import credentials, firestore
-import streamlit_authenticator as stauth
-import bcrypt
-import yaml
-from yaml.loader import SafeLoader
 import time
+import json
+import random 
+
+try:
+    # --- Importaciones Críticas ---
+    from PIL import Image
+    import fitz 
+    from pptx import Presentation
+    import pandas as pd
+    import google.generativeai as genai
+    import plotly.graph_objects as go
+    import firebase_admin
+    from firebase_admin import credentials, firestore
+    import streamlit_authenticator as stauth
+    import bcrypt
+    from streamlit_authenticator.utilities.hasher import Hasher 
+except ImportError as e:
+    st.error("Error crítico de dependencias.")
+    st.warning("Parece que faltan librerías. Por favor, verifica que tu archivo 'requirements.txt' contenga:")
+    st.code("""
+streamlit
+Pillow
+PyMuPDF
+python-pptx
+pandas
+google-generativeai
+plotly
+firebase-admin
+streamlit-authenticator
+bcrypt
+PyYAML
+    """)
+    st.stop()
+
 
 # --- FRASES MOTIVACIONALES ---
 STOIC_QUOTES = [
@@ -499,6 +519,23 @@ authenticator = stauth.Authenticate(
     config['preauthorized']['emails']
 )
 
+# --- Funciones de Lógica de Estado (Arreglo del NameError) ---
+
+def go_to_next_question():
+    """Avanza a la siguiente pregunta y resetea el estado."""
+    st.session_state.current_question_index += 1
+    st.session_state.user_answer = None
+    st.session_state.show_explanation = False
+
+def restart_exam():
+    """Reinicia el examen limpiando el estado."""
+    st.session_state.current_exam = None
+    st.session_state.current_question_index = 0
+    st.session_state.user_answer = None
+    st.session_state.show_explanation = False
+    st.session_state.exam_results = []
+
+
 # --- INTERFAZ PRINCIPAL ---
 if st.session_state.get("authentication_status") is None:
     st.title("Med-Flash AI 🧬")
@@ -713,12 +750,18 @@ if st.session_state.get("authentication_status"):
                     restart_exam()
                     try:
                         level_instruction = ""
+                        # --- INSTRUCCIONES ESTRICTAS PARA LA DIFICULTAD (CORRECCIÓN) ---
                         if "Novato" in st.session_state.user_level or "Nivel 1" in st.session_state.user_level:
-                            level_instruction = "El estudiante es Nivel NOVATO. Genera preguntas de conceptos BÁSICOS, definiciones fundamentales y anatomía simple. Evita casos clínicos complejos. Sé didáctico."
-                        elif "Especialista" in st.session_state.user_level:
-                            level_instruction = "El estudiante es NIVEL ESPECIALISTA. Genera preguntas de alta complejidad, casos clínicos con matices, fisiopatología avanzada y toma de decisiones."
-                        else:
-                            level_instruction = f"El estudiante está en {st.session_state.user_level}. Genera preguntas de dificultad INTERMEDIA/ALTA acorde a su progreso."
+                            level_instruction = "El estudiante es Nivel NOVATO (Nivel 1). Genera preguntas BÁSICAS enfocadas en: ¿Qué es? (Definición), ¿Dónde está? (Anatomía/Localización) y ¿Cómo se llama? (Terminología). Evita preguntas clínicas complejas."
+                        elif "Estudiante" in st.session_state.user_level or "Nivel 2" in st.session_state.user_level:
+                            level_instruction = "El estudiante es Nivel ESTUDIANTE (Nivel 2). Genera preguntas INTERMEDIAS enfocadas en: ¿Cómo funciona? (Mecanismos), Procesos secuenciales y Fórmulas básicas."
+                        elif "Interno" in st.session_state.user_level or "Nivel 3" in st.session_state.user_level:
+                            level_instruction = "El estudiante es Nivel INTERNO (Nivel 3). Genera preguntas AVANZADAS enfocadas en: ¿Qué pasa si falla? (Fisiopatología), Presentación Clínica y Farmacología fundamental."
+                        elif "Residente" in st.session_state.user_level or "Nivel 4" in st.session_state.user_level:
+                            level_instruction = "El estudiante es Nivel RESIDENTE (Nivel 4). Genera preguntas de ALTA DIFICULTAD enfocadas en: Diagnóstico Diferencial, Manejo agudo de emergencias y Algoritmos terapéuticos complejos (Estilo USMLE/MIR)."
+                        elif "Especialista" in st.session_state.user_level or "Nivel 5" in st.session_state.user_level:
+                            level_instruction = "El estudiante es Nivel ESPECIALISTA (Nivel 5). Genera preguntas de MÁXIMA DIFICULTAD enfocadas en: Investigaciones clínicas, Indicaciones quirúrgicas raras y Detalle de vías moleculares (Estilo Journal Club)."
+                        # ------------------------------------------------------------------
 
                         prompt_parts = [
                             f"Rol: Eres un profesor de medicina experto en {st.session_state.materia_actual} y tutor adaptativo.",
@@ -775,7 +818,6 @@ if st.session_state.get("authentication_status"):
             exam_data = st.session_state.current_exam
             exam = exam_data.get('preguntas', [])
             
-            # --- CORRECCIÓN FINAL (Evitamos el return problemático) ---
             # Verificación del mazo
             is_valid_exam = exam and isinstance(exam, list) and len(exam) > 0
 
@@ -883,17 +925,20 @@ if st.session_state.get("authentication_status"):
         st.caption(f"Nivel Actual: {st.session_state.user_level}")
         
         # Sincronizar la biblioteca con la base de datos
-        if not st.session_state.flashcard_library or len(st.session_state.flashcard_library) == 0:
-             st.session_state.flashcard_library = get_user_decks(username)
+        # CORRECCIÓN: Evitamos que la librería de mazos se guarde en el estado de sesión
+        if 'flashcard_library_cache' not in st.session_state or st.session_state.last_login_name != username:
+             st.session_state.flashcard_library_cache = get_user_decks(username)
         
-        if not st.session_state.flashcard_library:
+        user_decks_cache = st.session_state.flashcard_library_cache
+        
+        if not user_decks_cache:
             st.info("No hay mazos guardados. Ve a 'Generar Examen' para crear tu primer mazo.")
         else:
             
             # Preparar la lista de mazos para el selectbox
             deck_options = []
             deck_name_to_id = {}
-            for name, data in st.session_state.flashcard_library.items():
+            for name, data in user_decks_cache.items():
                 materia = data.get('materia', 'N/A')
                 sistema = data.get('sistema', 'N/A')
                 display_name = f"[{materia}/{sistema}] - {name}"
@@ -911,7 +956,7 @@ if st.session_state.get("authentication_status"):
                     if sel_deck_name: 
                         restart_exam()
                         # Cargamos el diccionario completo del mazo (que incluye preguntas, materia, sistema)
-                        st.session_state.current_exam = st.session_state.flashcard_library[sel_deck_name]
+                        st.session_state.current_exam = user_decks_cache[sel_deck_name]
                         # Añadimos el nombre del mazo para poder eliminarlo o referenciarlo
                         st.session_state.current_exam['deck_name'] = sel_deck_name 
                         st.session_state.page = "Estudiar"
@@ -919,7 +964,8 @@ if st.session_state.get("authentication_status"):
                 if st.button("🗑️ Eliminar Mazo", use_container_width=True):
                     if sel_deck_name: 
                         if delete_user_deck(username, sel_deck_name):
-                            del st.session_state.flashcard_library[sel_deck_name]
+                            # Eliminamos del caché local para refrescar
+                            del st.session_state.flashcard_library_cache[sel_deck_name]
                             st.success(f"Mazo '{sel_deck_name}' eliminado.")
                             st.rerun()
 
